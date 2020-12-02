@@ -66,7 +66,7 @@ type ResourceStateEvent struct {
 	User         User                    `json:"user"`
 	CreatedAt    Time                    `json:"created_at"`
 	ResourceType string                  `json:"resource_type"`
-	ResourceID   int64                   `json:"resource_id"`
+	ResourceID   ID                      `json:"resource_id"`
 	State        ResourceStateEventState `json:"state"`
 }
 
@@ -78,19 +78,19 @@ type ResourceStateEvent struct {
 type MergeRequestClosedEvent struct{ *ResourceStateEvent }
 
 func (e *MergeRequestClosedEvent) Key() string {
-	return fmt.Sprintf("closed:%s", e.CreatedAt.Time)
+	return fmt.Sprintf("closed:%s", e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type MergeRequestReopenedEvent struct{ *ResourceStateEvent }
 
 func (e *MergeRequestReopenedEvent) Key() string {
-	return fmt.Sprintf("reopened:%s", e.CreatedAt.Time)
+	return fmt.Sprintf("reopened:%s", e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type MergeRequestMergedEvent struct{ *ResourceStateEvent }
 
 func (e *MergeRequestMergedEvent) Key() string {
-	return fmt.Sprintf("merged:%s", e.CreatedAt.Time)
+	return fmt.Sprintf("merged:%s", e.CreatedAt.Time.Truncate(time.Second))
 }
 
 // ToEvent returns a pointer to a more specific struct, or

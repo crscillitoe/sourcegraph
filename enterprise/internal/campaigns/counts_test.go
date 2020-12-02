@@ -1579,7 +1579,7 @@ func glUnmarkWorkInProgress(id int64, t time.Time, login string) *campaigns.Chan
 		Metadata: &gitlab.UnmarkWorkInProgressEvent{
 			Note: &gitlab.Note{
 				System:    true,
-				Body:      gitlab.SystemNoteBodyReviewUnmarkedWorkInProgress,
+				Body:      gitlab.SystemNoteBodyUnmarkedWorkInProgress,
 				CreatedAt: gitlab.Time{Time: t},
 				Author: gitlab.User{
 					Username: login,
@@ -1596,7 +1596,7 @@ func glMarkWorkInProgress(id int64, t time.Time, login string) *campaigns.Change
 		Metadata: &gitlab.MarkWorkInProgressEvent{
 			Note: &gitlab.Note{
 				System:    true,
-				Body:      gitlab.SystemNoteBodyReviewMarkedWorkInProgress,
+				Body:      gitlab.SystemNoteBodyMarkedWorkInProgress,
 				CreatedAt: gitlab.Time{Time: t},
 				Author: gitlab.User{
 					Username: login,
@@ -1621,9 +1621,9 @@ func glReopen(id int64, t time.Time, login string) *campaigns.ChangesetEvent {
 	return &campaigns.ChangesetEvent{
 		ChangesetID: id,
 		Kind:        campaigns.ChangesetEventKindGitLabReopened,
-		Metadata: &gitlabwebhooks.MergeRequestReopenEvent{
-			MergeRequestEventCommon: gitlabwebhooks.MergeRequestEventCommon{
-				User: &gitlab.User{Username: login},
+		Metadata: &gitlab.MergeRequestReopenedEvent{
+			ResourceStateEvent: &gitlab.ResourceStateEvent{
+				User: gitlab.User{Username: login},
 			},
 		},
 		CreatedAt: t,

@@ -53,12 +53,14 @@ type MergeRequest struct {
 	Events    []*ResourceStateEvent
 }
 
+// IsWIP returns true if the given title would result in GitLab rendering the MR as 'work in progress'.
+func IsWIP(title string) bool {
+	return strings.HasPrefix(title, "Draft:") || strings.HasPrefix(title, "WIP:")
+}
+
 // SetWIP ensures a "WIP:" prefix on the given title. If a "Draft:" prefix is found, that one is retained instead.
 func SetWIP(title string) string {
-	if strings.HasPrefix(title, "Draft:") {
-		return title
-	}
-	if strings.HasPrefix(title, "WIP:") {
+	if IsWIP(title) {
 		return title
 	}
 	return "WIP: " + title

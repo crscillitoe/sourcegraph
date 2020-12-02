@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
@@ -985,6 +986,11 @@ func createMergeRequestPayload(t *testing.T, repo *repos.Repo, changeset *campai
 		"object_attributes": map[string]interface{}{
 			"iid":    cid,
 			"action": action,
+		},
+		"changes": map[string]interface{}{
+			"updated_at": map[string]interface{}{
+				"current": gitlab.Time{Time: time.Now()},
+			},
 		},
 	})
 }

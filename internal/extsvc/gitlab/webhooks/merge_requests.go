@@ -28,9 +28,20 @@ import (
 type MergeRequestEventCommon struct {
 	EventCommon
 
-	MergeRequest *gitlab.MergeRequest `json:"merge_request"`
-	User         *gitlab.User         `json:"user"`
-	Labels       *[]gitlab.Label      `json:"labels"`
+	MergeRequest *gitlab.MergeRequest     `json:"merge_request"`
+	User         *gitlab.User             `json:"user"`
+	Labels       *[]gitlab.Label          `json:"labels"`
+	Changes      mergeRequestEventChanges `json:"changes"`
+}
+
+type mergeRequestEventChanges struct {
+	Title struct {
+		Previous string `json:"previous"`
+		Current  string `json:"current"`
+	} `json:"title"`
+	UpdatedAt struct {
+		Current gitlab.Time `json:"current"`
+	} `json:"updated_at"`
 }
 
 // MergeRequestEventContainer is a common interface for types that embed
@@ -45,22 +56,111 @@ type MergeRequestCloseEvent struct{ MergeRequestEventCommon }
 type MergeRequestMergeEvent struct{ MergeRequestEventCommon }
 type MergeRequestReopenEvent struct{ MergeRequestEventCommon }
 type MergeRequestUnapprovedEvent struct{ MergeRequestEventCommon }
+type MergeRequestUndraftEvent struct{ MergeRequestEventCommon }
+type MergeRequestDraftEvent struct{ MergeRequestEventCommon }
 type MergeRequestUpdateEvent struct{ MergeRequestEventCommon }
 
-func (e *MergeRequestApprovedEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
+func (e *MergeRequestUndraftEvent) ToEvent() *gitlab.UnmarkWorkInProgressEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.UnmarkWorkInProgressEvent{
+		Note: &gitlab.Note{
+			Body:      gitlab.SystemNoteBodyUnmarkedWorkInProgress,
+			System:    true,
+			CreatedAt: e.Changes.UpdatedAt.Current,
+			Author:    user,
+		},
+	}
 }
-func (e *MergeRequestCloseEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
+func (e *MergeRequestDraftEvent) ToEvent() *gitlab.MarkWorkInProgressEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.MarkWorkInProgressEvent{
+		Note: &gitlab.Note{
+			Body:      gitlab.SystemNoteBodyMarkedWorkInProgress,
+			System:    true,
+			CreatedAt: e.Changes.UpdatedAt.Current,
+			Author:    user,
+		},
+	}
 }
-func (e *MergeRequestMergeEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
+func (e *MergeRequestApprovedEvent) ToEvent() *gitlab.ReviewApprovedEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.ReviewApprovedEvent{
+		Note: &gitlab.Note{
+			Body:      gitlab.SystemNoteBodyReviewApproved,
+			System:    true,
+			CreatedAt: e.Changes.UpdatedAt.Current,
+			Author:    user,
+		},
+	}
 }
-func (e *MergeRequestReopenEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
+func (e *MergeRequestCloseEvent) ToEvent() *gitlab.MergeRequestClosedEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.MergeRequestClosedEvent{
+		ResourceStateEvent: &gitlab.ResourceStateEvent{
+			User:         user,
+			CreatedAt:    e.Changes.UpdatedAt.Current,
+			ResourceType: "merge_request",
+			ResourceID:   e.MergeRequest.ID,
+			State:        gitlab.ResourceStateEventStateClosed,
+		},
+	}
 }
-func (e *MergeRequestUnapprovedEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
+func (e *MergeRequestMergeEvent) ToEvent() *gitlab.MergeRequestMergedEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.MergeRequestMergedEvent{
+		ResourceStateEvent: &gitlab.ResourceStateEvent{
+			User:         user,
+			CreatedAt:    e.Changes.UpdatedAt.Current,
+			ResourceType: "merge_request",
+			ResourceID:   e.MergeRequest.ID,
+			State:        gitlab.ResourceStateEventStateMerged,
+		},
+	}
+}
+func (e *MergeRequestReopenEvent) ToEvent() *gitlab.MergeRequestReopenedEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.MergeRequestReopenedEvent{
+		ResourceStateEvent: &gitlab.ResourceStateEvent{
+			User:         user,
+			CreatedAt:    e.Changes.UpdatedAt.Current,
+			ResourceType: "merge_request",
+			ResourceID:   e.MergeRequest.ID,
+			State:        gitlab.ResourceStateEventStateReopened,
+		},
+	}
+}
+func (e *MergeRequestUnapprovedEvent) ToEvent() *gitlab.ReviewUnapprovedEvent {
+	user := gitlab.User{}
+	if e.User != nil {
+		user = *e.User
+	}
+	return &gitlab.ReviewUnapprovedEvent{
+		Note: &gitlab.Note{
+			Body:   gitlab.SystemNoteBodyReviewUnapproved,
+			System: true,
+			// TODO: Changes is empty here for gods sake.
+			CreatedAt: e.Changes.UpdatedAt.Current,
+			Author:    user,
+		},
+	}
 }
 func (e *MergeRequestUpdateEvent) ToEvent() *MergeRequestEventCommon {
 	return &e.MergeRequestEventCommon
@@ -72,8 +172,9 @@ func (e *MergeRequestUpdateEvent) ToEvent() *MergeRequestEventCommon {
 type mergeRequestEvent struct {
 	EventCommon
 
-	User   *gitlab.User    `json:"user"`
-	Labels *[]gitlab.Label `json:"labels"`
+	User    *gitlab.User             `json:"user"`
+	Labels  *[]gitlab.Label          `json:"labels"`
+	Changes mergeRequestEventChanges `json:"changes"`
 
 	ObjectAttributes mergeRequestEventObjectAttributes `json:"object_attributes"`
 }
@@ -89,6 +190,7 @@ func (mre *mergeRequestEvent) downcast() (interface{}, error) {
 		MergeRequest: mre.ObjectAttributes.MergeRequest,
 		User:         mre.User,
 		Labels:       mre.Labels,
+		Changes:      mre.Changes,
 	}
 
 	// These action values are completely undocumented in GitLab's webhook
@@ -115,6 +217,13 @@ func (mre *mergeRequestEvent) downcast() (interface{}, error) {
 		return &MergeRequestUnapprovedEvent{e}, nil
 
 	case "update":
+		if prev, curr := e.Changes.Title.Previous, e.Changes.Title.Current; prev != "" && curr != "" {
+			if gitlab.IsWIP(prev) && !gitlab.IsWIP(curr) {
+				return &MergeRequestUndraftEvent{e}, nil
+			} else if !gitlab.IsWIP(prev) && gitlab.IsWIP(curr) {
+				return &MergeRequestDraftEvent{e}, nil
+			}
+		}
 		return &MergeRequestUpdateEvent{e}, nil
 	}
 

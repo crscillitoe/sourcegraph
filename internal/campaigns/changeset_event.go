@@ -620,38 +620,99 @@ func (e *ChangesetEvent) Update(o *ChangesetEvent) error {
 
 	case *gitlab.ReviewApprovedEvent:
 		o := o.Metadata.(*gitlab.ReviewApprovedEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if !e.System {
+			e.System = o.System
+		}
+		if e.Body == "" {
+			e.Body = o.Body
+		}
+		if e.Author.ID == 0 {
+			e.Author = o.Author
+		}
 
 	case *gitlab.ReviewUnapprovedEvent:
 		o := o.Metadata.(*gitlab.ReviewUnapprovedEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if !e.System {
+			e.System = o.System
+		}
+		if e.Body == "" {
+			e.Body = o.Body
+		}
+		if e.Author.ID == 0 {
+			e.Author = o.Author
+		}
 
 	case *gitlab.MarkWorkInProgressEvent:
 		o := o.Metadata.(*gitlab.MarkWorkInProgressEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if !e.System {
+			e.System = o.System
+		}
+		if e.Body == "" {
+			e.Body = o.Body
+		}
+		if e.Author.ID == 0 {
+			e.Author = o.Author
+		}
 
 	case *gitlab.UnmarkWorkInProgressEvent:
 		o := o.Metadata.(*gitlab.UnmarkWorkInProgressEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if !e.System {
+			e.System = o.System
+		}
+		if e.Body == "" {
+			e.Body = o.Body
+		}
+		if e.Author.ID == 0 {
+			e.Author = o.Author
+		}
 
 	case *gitlab.MergeRequestClosedEvent:
 		o := o.Metadata.(*gitlab.MergeRequestClosedEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if e.ResourceID == 0 {
+			e.ResourceID = o.ResourceID
+		}
+		if e.User.ID == 0 {
+			e.User = o.User
+		}
 
 	case *gitlab.MergeRequestReopenedEvent:
 		o := o.Metadata.(*gitlab.MergeRequestReopenedEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if e.ResourceID == 0 {
+			e.ResourceID = o.ResourceID
+		}
+		if e.User.ID == 0 {
+			e.User = o.User
+		}
 
 	case *gitlab.MergeRequestMergedEvent:
 		o := o.Metadata.(*gitlab.MergeRequestMergedEvent)
-		// We always get the full event, so safe to replace it
-		*e = *o
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = o.CreatedAt
+		}
+		if e.ResourceID == 0 {
+			e.ResourceID = o.ResourceID
+		}
+		if e.User.ID == 0 {
+			e.User = o.User
+		}
 
 	case *gitlabwebhooks.PipelineEvent:
 		o := o.Metadata.(*gitlabwebhooks.PipelineEvent)

@@ -53,10 +53,12 @@ func (c *Client) GetMergeRequestNotes(ctx context.Context, project *Project, iid
 type SystemNoteBody string
 
 const (
-	SystemNoteBodyReviewApproved               SystemNoteBody = "approved this merge request"
-	SystemNoteBodyReviewUnapproved             SystemNoteBody = "unapproved this merge request"
-	SystemNoteBodyReviewUnmarkedWorkInProgress SystemNoteBody = "unmarked as a **Work In Progress**"
-	SystemNoteBodyReviewMarkedWorkInProgress   SystemNoteBody = "marked as a **Work In Progress**"
+	SystemNoteBodyReviewApproved         SystemNoteBody = "approved this merge request"
+	SystemNoteBodyReviewUnapproved       SystemNoteBody = "unapproved this merge request"
+	SystemNoteBodyUnmarkedWorkInProgress SystemNoteBody = "unmarked as a **Work In Progress**"
+	SystemNoteBodyMarkedWorkInProgress   SystemNoteBody = "marked as a **Work In Progress**"
+	SystemNoteBodyMarkedDraft            SystemNoteBody = "marked this merge request as **draft**"
+	SystemNoteBodyMarkedReady            SystemNoteBody = "marked this merge request as **ready**"
 )
 
 type Note struct {
@@ -75,25 +77,25 @@ type Note struct {
 type ReviewApprovedEvent struct{ *Note }
 
 func (e *ReviewApprovedEvent) Key() string {
-	return fmt.Sprintf("approved:%d:%s", e.Author.ID, e.CreatedAt.Time)
+	return fmt.Sprintf("approved:%s:%s", e.Author.Username, e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type ReviewUnapprovedEvent struct{ *Note }
 
 func (e *ReviewUnapprovedEvent) Key() string {
-	return fmt.Sprintf("unapproved:%d:%s", e.Author.ID, e.CreatedAt.Time)
+	return fmt.Sprintf("unapproved:%s:%s", e.Author.Username, e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type MarkWorkInProgressEvent struct{ *Note }
 
 func (e *MarkWorkInProgressEvent) Key() string {
-	return fmt.Sprintf("wip:%s", e.CreatedAt.Time)
+	return fmt.Sprintf("wip:%s", e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type UnmarkWorkInProgressEvent struct{ *Note }
 
 func (e *UnmarkWorkInProgressEvent) Key() string {
-	return fmt.Sprintf("unwip:%s", e.CreatedAt.Time)
+	return fmt.Sprintf("unwip:%s", e.CreatedAt.Time.Truncate(time.Second))
 }
 
 type keyer interface {
@@ -109,9 +111,11 @@ func (n *Note) ToEvent() keyer {
 			return &ReviewApprovedEvent{n}
 		case SystemNoteBodyReviewUnapproved:
 			return &ReviewUnapprovedEvent{n}
-		case SystemNoteBodyReviewUnmarkedWorkInProgress:
+		case SystemNoteBodyMarkedReady,
+			SystemNoteBodyUnmarkedWorkInProgress:
 			return &UnmarkWorkInProgressEvent{n}
-		case SystemNoteBodyReviewMarkedWorkInProgress:
+		case SystemNoteBodyMarkedDraft,
+			SystemNoteBodyMarkedWorkInProgress:
 			return &MarkWorkInProgressEvent{n}
 		}
 	}
