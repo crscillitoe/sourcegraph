@@ -19,18 +19,19 @@ func (c *Client) GetMergeRequestPipelines(ctx context.Context, project *Project,
 	}
 
 	url := fmt.Sprintf("projects/%d/merge_requests/%d/pipelines", project.ID, iid)
+	currentPage := "1"
 	return func() ([]*Pipeline, error) {
 		page := []*Pipeline{}
 
 		// If there aren't any further pages, we'll return the empty slice we
 		// just created.
-		if url == "" {
+		if currentPage == "" {
 			return page, nil
 		}
 
 		time.Sleep(c.rateLimitMonitor.RecommendedWaitForBackgroundOp(1))
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", url+"?page="+currentPage, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating pipeline request")
 		}
@@ -40,10 +41,10 @@ func (c *Client) GetMergeRequestPipelines(ctx context.Context, project *Project,
 			return nil, errors.Wrap(err, "requesting pipeline page")
 		}
 
-		// If there's another page, this will be a URL. If there's not, then
+		// If there's another page, this will be a page number. If there's not, then
 		// this will be an empty string, and we can detect that next iteration
 		// to short circuit.
-		url = header.Get("X-Next-Page")
+		currentPage = header.Get("X-Next-Page")
 
 		return page, nil
 	}

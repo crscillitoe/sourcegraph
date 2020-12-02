@@ -88,20 +88,6 @@ func (e *MergeRequestDraftEvent) ToEvent() *gitlab.MarkWorkInProgressEvent {
 		},
 	}
 }
-func (e *MergeRequestApprovedEvent) ToEvent() *gitlab.ReviewApprovedEvent {
-	user := gitlab.User{}
-	if e.User != nil {
-		user = *e.User
-	}
-	return &gitlab.ReviewApprovedEvent{
-		Note: &gitlab.Note{
-			Body:      gitlab.SystemNoteBodyReviewApproved,
-			System:    true,
-			CreatedAt: e.Changes.UpdatedAt.Current,
-			Author:    user,
-		},
-	}
-}
 func (e *MergeRequestCloseEvent) ToEvent() *gitlab.MergeRequestClosedEvent {
 	user := gitlab.User{}
 	if e.User != nil {
@@ -146,24 +132,6 @@ func (e *MergeRequestReopenEvent) ToEvent() *gitlab.MergeRequestReopenedEvent {
 			State:        gitlab.ResourceStateEventStateReopened,
 		},
 	}
-}
-func (e *MergeRequestUnapprovedEvent) ToEvent() *gitlab.ReviewUnapprovedEvent {
-	user := gitlab.User{}
-	if e.User != nil {
-		user = *e.User
-	}
-	return &gitlab.ReviewUnapprovedEvent{
-		Note: &gitlab.Note{
-			Body:   gitlab.SystemNoteBodyReviewUnapproved,
-			System: true,
-			// TODO: Changes is empty here for gods sake.
-			CreatedAt: e.Changes.UpdatedAt.Current,
-			Author:    user,
-		},
-	}
-}
-func (e *MergeRequestUpdateEvent) ToEvent() *MergeRequestEventCommon {
-	return &e.MergeRequestEventCommon
 }
 
 // mergeRequestEvent is an internal type used for initially unmarshalling the

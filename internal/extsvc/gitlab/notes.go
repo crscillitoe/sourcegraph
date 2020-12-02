@@ -19,18 +19,19 @@ func (c *Client) GetMergeRequestNotes(ctx context.Context, project *Project, iid
 	}
 
 	url := fmt.Sprintf("projects/%d/merge_requests/%d/notes", project.ID, iid)
+	currentPage := "1"
 	return func() ([]*Note, error) {
 		page := []*Note{}
 
 		// If there aren't any further pages, we'll return the empty slice we
 		// just created.
-		if url == "" {
+		if currentPage == "" {
 			return page, nil
 		}
 
 		time.Sleep(c.rateLimitMonitor.RecommendedWaitForBackgroundOp(1))
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", url+"?page="+currentPage, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating notes request")
 		}
@@ -40,10 +41,10 @@ func (c *Client) GetMergeRequestNotes(ctx context.Context, project *Project, iid
 			return nil, errors.Wrap(err, "requesting notes page")
 		}
 
-		// If there's another page, this will be a URL. If there's not, then
+		// If there's another page, this will be a page number. If there's not, then
 		// this will be an empty string, and we can detect that next iteration
 		// to short circuit.
-		url = header.Get("X-Next-Page")
+		currentPage = header.Get("X-Next-Page")
 
 		return page, nil
 	}

@@ -167,27 +167,17 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 	// changeset state won't appear _quite_ as instantaneously to the user, but
 	// this is the best compromise given the limited payload we get in the
 	// webhook.
-	case *webhooks.MergeRequestApprovedEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
+	case *webhooks.MergeRequestApprovedEvent,
+		*webhooks.MergeRequestUnapprovedEvent,
+		*webhooks.MergeRequestUpdateEvent:
+		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.(*webhooks.MergeRequestEventCommon)); err != nil {
 			return &httpError{
 				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
+				err:  err,
 			}
 		}
 		return nil
 
-	case *webhooks.MergeRequestUnapprovedEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
 	case *webhooks.MergeRequestCloseEvent:
 		event := e.ToEvent()
 		pr := gitlabToPR(&e.Project, e.MergeRequest)
@@ -238,15 +228,6 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 			return &httpError{
 				code: http.StatusInternalServerError,
 				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
-
-	case *webhooks.MergeRequestUpdateEvent:
-		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.ToEvent()); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  err,
 			}
 		}
 		return nil
