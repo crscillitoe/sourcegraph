@@ -64,7 +64,7 @@ func TestMergeRequestDowncast(t *testing.T) {
 					t.Errorf("unexpected downcasted type: have %s; want %s", have, tc.want)
 				}
 
-				mr := dc.(MergeRequestEventContainer).ToEvent()
+				mr := dc.(MergeRequestEventContainer).ToEventCommon()
 				if diff := cmp.Diff(mre.EventCommon, mr.EventCommon); diff != "" {
 					t.Errorf("mismatched EventCommon: %s", diff)
 				}

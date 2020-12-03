@@ -48,7 +48,7 @@ type mergeRequestEventChanges struct {
 // MergeRequestEvent to provide a method that can return the embedded
 // MergeRequestEvent.
 type MergeRequestEventContainer interface {
-	ToEvent() *MergeRequestEventCommon
+	ToEventCommon() *MergeRequestEventCommon
 }
 
 type MergeRequestApprovedEvent struct{ MergeRequestEventCommon }
@@ -59,6 +59,16 @@ type MergeRequestUnapprovedEvent struct{ MergeRequestEventCommon }
 type MergeRequestUndraftEvent struct{ MergeRequestEventCommon }
 type MergeRequestDraftEvent struct{ MergeRequestEventCommon }
 type MergeRequestUpdateEvent struct{ MergeRequestEventCommon }
+
+func (e *MergeRequestApprovedEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+func (e *MergeRequestUnapprovedEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+func (e *MergeRequestUpdateEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
 
 func (e *MergeRequestUndraftEvent) ToEvent() *gitlab.UnmarkWorkInProgressEvent {
 	user := gitlab.User{}

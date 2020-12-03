@@ -174,16 +174,7 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 	case *webhooks.MergeRequestApprovedEvent,
 		*webhooks.MergeRequestUnapprovedEvent,
 		*webhooks.MergeRequestUpdateEvent:
-		var common *webhooks.MergeRequestEventCommon
-		switch e := e.(type) {
-		case *webhooks.MergeRequestApprovedEvent:
-			common = &e.MergeRequestEventCommon
-		case *webhooks.MergeRequestUnapprovedEvent:
-			common = &e.MergeRequestEventCommon
-		case *webhooks.MergeRequestUpdateEvent:
-			common = &e.MergeRequestEventCommon
-		}
-		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, common); err != nil {
+		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.(webhooks.MergeRequestEventContainer).ToEventCommon()); err != nil {
 			return &httpError{
 				code: http.StatusInternalServerError,
 				err:  err,
