@@ -487,7 +487,7 @@ func (s *GitLabSource) decorateMergeRequestData(ctx context.Context, project *gi
 
 	events, err := s.getMergeRequestResourceStateEvents(ctx, project, mr)
 	if err != nil {
-		return errors.Wrap(err, "retrieving rses")
+		return errors.Wrap(err, "retrieving resource state events")
 	}
 
 	pipelines, err := s.getMergeRequestPipelines(ctx, project, mr)
@@ -552,7 +552,7 @@ func (s *GitLabSource) getMergeRequestResourceStateEvents(ctx context.Context, p
 	// returned.
 	events, err := readMergeRequestResourceStateEvents(it)
 	if err != nil {
-		return nil, errors.Wrap(err, "reading rse pages")
+		return nil, errors.Wrap(err, "reading resource state events pages")
 	}
 
 	return events, nil
@@ -564,7 +564,7 @@ func readMergeRequestResourceStateEvents(it func() ([]*gitlab.ResourceStateEvent
 	for {
 		page, err := it()
 		if err != nil {
-			return nil, errors.Wrap(err, "retrieving rse page")
+			return nil, errors.Wrap(err, "retrieving resource state events page")
 		}
 		if len(page) == 0 {
 			// The terminal condition for the iterator is returning an empty
