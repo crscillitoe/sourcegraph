@@ -4,21 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/pkg/errors"
 )
 
-// GetMergeRequestResourceStateEvents retrieves the notes for the given merge request. As the
-// notes are paginated, a function is returned that may be invoked to return the
+// GetMergeRequestResourceStateEvents retrieves the events for the given merge request. As the
+// events are paginated, a function is returned that may be invoked to return the
 // next page of results. An empty slice and a nil error indicates that all pages
 // have been returned.
 func (c *Client) GetMergeRequestResourceStateEvents(ctx context.Context, project *Project, iid ID) func() ([]*ResourceStateEvent, error) {
-	// if MockGetMergeRequestNotes != nil {
-	// 	return MockGetMergeRequestNotes(c, ctx, project, iid)
-	// }
-
-	url := fmt.Sprintf("projects/%d/merge_requests/%d/resource_state_events", project.ID, iid)
+	baseURL := fmt.Sprintf("projects/%d/merge_requests/%d/resource_state_events", project.ID, iid)
 	currentPage := "1"
 	return func() ([]*ResourceStateEvent, error) {
 		page := []*ResourceStateEvent{}
@@ -31,7 +28,13 @@ func (c *Client) GetMergeRequestResourceStateEvents(ctx context.Context, project
 
 		time.Sleep(c.rateLimitMonitor.RecommendedWaitForBackgroundOp(1))
 
-		req, err := http.NewRequest("GET", url+"?page="+currentPage, nil)
+		url, err := url.Parse(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		url.Query().Add("page", currentPage)
+
+		req, err := http.NewRequest("GET", url.String(), nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating rse request")
 		}
@@ -71,11 +74,6 @@ type ResourceStateEvent struct {
 	State        ResourceStateEventState `json:"state"`
 }
 
-// Notes are not strongly typed, but also provide the only real method we have
-// of getting historical approval events. We'll define a couple of fake types to
-// better match what other external services provide, and a function to convert
-// a Note into one of those types if the Note is a system approval comment.
-
 type MergeRequestClosedEvent struct{ *ResourceStateEvent }
 
 func (e *MergeRequestClosedEvent) Key() string {
@@ -95,7 +93,7 @@ func (e *MergeRequestMergedEvent) Key() string {
 }
 
 // ToEvent returns a pointer to a more specific struct, or
-// nil if the Note is not of a known kind.
+// nil if the ResourceStateEvent is not of a known kind.
 func (rse *ResourceStateEvent) ToEvent() interface{} {
 	switch rse.State {
 	case ResourceStateEventStateClosed:

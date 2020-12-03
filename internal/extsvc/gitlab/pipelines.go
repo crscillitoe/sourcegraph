@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/pkg/errors"
@@ -18,7 +19,7 @@ func (c *Client) GetMergeRequestPipelines(ctx context.Context, project *Project,
 		return MockGetMergeRequestPipelines(c, ctx, project, iid)
 	}
 
-	url := fmt.Sprintf("projects/%d/merge_requests/%d/pipelines", project.ID, iid)
+	baseURL := fmt.Sprintf("projects/%d/merge_requests/%d/pipelines", project.ID, iid)
 	currentPage := "1"
 	return func() ([]*Pipeline, error) {
 		page := []*Pipeline{}
@@ -31,7 +32,13 @@ func (c *Client) GetMergeRequestPipelines(ctx context.Context, project *Project,
 
 		time.Sleep(c.rateLimitMonitor.RecommendedWaitForBackgroundOp(1))
 
-		req, err := http.NewRequest("GET", url+"?page="+currentPage, nil)
+		url, err := url.Parse(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		url.Query().Add("page", currentPage)
+
+		req, err := http.NewRequest("GET", url.String(), nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "creating pipeline request")
 		}
