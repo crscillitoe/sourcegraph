@@ -165,7 +165,6 @@ func (h Webhook) upsertChangesetEvent(
 	}
 
 	if existing != nil {
-		log15.Warn("Updating existing changeset event", "existing", existing)
 		// Update is used to create or update the record in the database,
 		// but we're actually "patching" the record with specific merge semantics
 		// encoded in Update. This is because some webhooks payloads don't contain
@@ -175,8 +174,6 @@ func (h Webhook) upsertChangesetEvent(
 			return err
 		}
 		event = existing
-	} else {
-		log15.Warn("Creating new changeset event", "event", event)
 	}
 
 	// Add new event
