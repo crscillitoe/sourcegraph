@@ -126,6 +126,8 @@ func (h *GitLabWebhook) getExternalServiceFromRawID(ctx context.Context, raw str
 // handleEvent is essentially a router: it dispatches based on the event type
 // to perform whatever changeset action is appropriate for that event.
 func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalService, event interface{}) *httpError {
+	log15.Debug("GitLab webhook received", "type", fmt.Sprintf("%T", event))
+
 	esID, err := extractExternalServiceID(extSvc)
 	if err != nil {
 		return &httpError{

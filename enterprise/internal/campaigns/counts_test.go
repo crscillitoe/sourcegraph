@@ -1611,7 +1611,11 @@ func glClosed(id int64, t time.Time, login string) *campaigns.ChangesetEvent {
 		ChangesetID: id,
 		Kind:        campaigns.ChangesetEventKindGitLabClosed,
 		Metadata: &gitlab.MergeRequestClosedEvent{
-			ResourceStateEvent: &gitlab.ResourceStateEvent{CreatedAt: gitlab.Time{Time: t}, User: gitlab.User{Username: login}},
+			ResourceStateEvent: &gitlab.ResourceStateEvent{
+				CreatedAt: gitlab.Time{Time: t},
+				User:      gitlab.User{Username: login},
+				State:     gitlab.ResourceStateEventStateClosed,
+			},
 		},
 		CreatedAt: t,
 	}
@@ -1623,7 +1627,9 @@ func glReopen(id int64, t time.Time, login string) *campaigns.ChangesetEvent {
 		Kind:        campaigns.ChangesetEventKindGitLabReopened,
 		Metadata: &gitlab.MergeRequestReopenedEvent{
 			ResourceStateEvent: &gitlab.ResourceStateEvent{
-				User: gitlab.User{Username: login},
+				CreatedAt: gitlab.Time{Time: t},
+				User:      gitlab.User{Username: login},
+				State:     gitlab.ResourceStateEventStateReopened,
 			},
 		},
 		CreatedAt: t,
