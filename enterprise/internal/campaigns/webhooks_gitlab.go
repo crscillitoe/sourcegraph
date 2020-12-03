@@ -59,7 +59,6 @@ func (h *GitLabWebhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusInternalServerError, errors.Wrap(err, "reading payload"))
 		return
 	}
-	log15.Warn("Read payload", "payload", string(payload))
 
 	event, err := webhooks.UnmarshalEvent(payload)
 	if err != nil {
@@ -84,7 +83,6 @@ func (h *GitLabWebhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := h.handleEvent(r.Context(), extSvc, event); err != nil {
 		respond(w, err.code, err)
 	} else {
-		log15.Warn("Handling was successful")
 		respond(w, http.StatusNoContent, nil)
 	}
 }
@@ -125,15 +123,9 @@ func (h *GitLabWebhook) getExternalServiceFromRawID(ctx context.Context, raw str
 	return es[0], nil
 }
 
-type mergeRequestCommonEvent struct {
-	webhooks.MergeRequestEventCommon
-}
-
 // handleEvent is essentially a router: it dispatches based on the event type
 // to perform whatever changeset action is appropriate for that event.
 func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalService, event interface{}) *httpError {
-	log15.Warn("GitLab webhook received", "type", fmt.Sprintf("%T", event))
-
 	esID, err := extractExternalServiceID(extSvc)
 	if err != nil {
 		return &httpError{
