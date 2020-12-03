@@ -125,6 +125,10 @@ func (h *GitLabWebhook) getExternalServiceFromRawID(ctx context.Context, raw str
 	return es[0], nil
 }
 
+type mergeRequestCommonEvent struct {
+	webhooks.MergeRequestEventCommon
+}
+
 // handleEvent is essentially a router: it dispatches based on the event type
 // to perform whatever changeset action is appropriate for that event.
 func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalService, event interface{}) *httpError {
@@ -170,7 +174,16 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 	case *webhooks.MergeRequestApprovedEvent,
 		*webhooks.MergeRequestUnapprovedEvent,
 		*webhooks.MergeRequestUpdateEvent:
-		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.(*webhooks.MergeRequestEventCommon)); err != nil {
+		var common *webhooks.MergeRequestEventCommon
+		switch e := e.(type) {
+		case *webhooks.MergeRequestApprovedEvent:
+			common = &e.MergeRequestEventCommon
+		case *webhooks.MergeRequestUnapprovedEvent:
+			common = &e.MergeRequestEventCommon
+		case *webhooks.MergeRequestUpdateEvent:
+			common = &e.MergeRequestEventCommon
+		}
+		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, common); err != nil {
 			return &httpError{
 				code: http.StatusInternalServerError,
 				err:  err,
