@@ -36,7 +36,9 @@ func (c *Client) GetMergeRequestResourceStateEvents(ctx context.Context, project
 		if err != nil {
 			return nil, err
 		}
-		url.Query().Add("page", currentPage)
+		q := url.Query()
+		q.Add("page", currentPage)
+		url.RawQuery = q.Encode()
 
 		req, err := http.NewRequest("GET", url.String(), nil)
 		if err != nil {
