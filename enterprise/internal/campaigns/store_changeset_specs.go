@@ -467,6 +467,9 @@ func getRewirerMappingsQuery(opts GetRewirerMappingsOpts) *sqlf.Query {
 		opts.CampaignSpecID,
 		opts.CampaignID,
 		opts.CampaignSpecID,
+		opts.CampaignSpecID,
+		opts.CampaignID,
+		opts.CampaignSpecID,
 		opts.CampaignID,
 		opts.CampaignID,
 	)
@@ -474,42 +477,26 @@ func getRewirerMappingsQuery(opts GetRewirerMappingsOpts) *sqlf.Query {
 
 var getRewirerMappingsQueryFmtstr = `
 -- source: enterprise/internal/campaigns/store_changeset_specs.go:GetRewirerMappings
-WITH
-	-- Fetch all changeset specs in the campaign spec that want to import/track an ChangesetSpecDescriptionTypeExisting changeset.
-	-- Match the entries to changesets in the target campaign by external ID and repo.
-	tracked_mappings AS (
-		SELECT changeset_specs.id AS changeset_spec_id, COALESCE(changesets.id, 0) AS changeset_id, changeset_specs.repo_id AS repo_id
-		FROM changeset_specs
-		LEFT JOIN changesets ON changesets.repo_id = changeset_specs.repo_id AND changesets.external_id = changeset_specs.spec->>'externalID'
-		INNER JOIN repo ON changeset_specs.repo_id = repo.id
-		WHERE
-		changeset_specs.campaign_spec_id = %s AND
-		changeset_specs.spec->>'externalID' IS NOT NULL AND changeset_specs.spec->>'externalID' != '' AND
-		repo.deleted_at IS NULL
-	),
-	-- Fetch all changeset specs in the campaign spec that are of type ChangesetSpecDescriptionTypeBranch.
-	-- Match the entries to changesets in the target campaign by head ref and repo.
-	branch_mappings AS (
-		SELECT changeset_specs.id AS changeset_spec_id, COALESCE(changesets.id, 0) AS changeset_id, changeset_specs.repo_id AS repo_id
-		FROM changeset_specs
-		LEFT JOIN changesets ON
-			changesets.repo_id = changeset_specs.repo_id AND
-			changesets.current_spec_id IS NOT NULL AND
-			changesets.owned_by_campaign_id = %s AND
-			(SELECT spec FROM changeset_specs WHERE changeset_specs.id = changesets.current_spec_id)->>'headRef' = changeset_specs.spec->>'headRef'
-		INNER JOIN repo ON changeset_specs.repo_id = repo.id
-		WHERE
-			changeset_specs.campaign_spec_id = %s AND
-			--- We look at a ChangesetSpecDescriptionTypeBranch changeset.
-			(changeset_specs.spec->>'externalID' IS NULL OR changeset_specs.spec->>'externalID' = '') AND
-			repo.deleted_at IS NULL
-)
 
-SELECT changeset_spec_id, changeset_id, repo_id FROM tracked_mappings
+-- Fetch all changeset specs in the campaign spec that want to import/track an ChangesetSpecDescriptionTypeExisting changeset.
+-- Match the entries to changesets in the target campaign by external ID and repo.
+SELECT
+	changeset_spec_id, changeset_id, repo_id
+FROM
+	changeset_spec_tracked_mappings
+WHERE
+	campaign_spec_id = %s
 
 UNION ALL
 
-SELECT changeset_spec_id, changeset_id, repo_id FROM branch_mappings
+-- Fetch all changeset specs in the campaign spec that are of type ChangesetSpecDescriptionTypeBranch.
+-- Match the entries to changesets in the target campaign by head ref and repo.
+SELECT
+	changeset_spec_id, CASE WHEN owner_campaign_id = %s	THEN changeset_id ELSE 0 END, repo_id
+FROM
+	changeset_spec_branch_mappings
+WHERE
+	campaign_spec_id = %s
 
 UNION ALL
 
@@ -520,9 +507,22 @@ INNER JOIN repo ON changesets.repo_id = repo.id
 WHERE
 	repo.deleted_at IS NULL AND
  	changesets.id NOT IN (
-		 SELECT changeset_id FROM tracked_mappings WHERE changeset_id != 0
+			SELECT
+				changeset_id
+			FROM
+				changeset_spec_tracked_mappings
+			WHERE
+				changeset_id != 0 AND
+				campaign_spec_id = %s
 		 UNION
-		 SELECT changeset_id FROM branch_mappings WHERE changeset_id != 0
+			SELECT
+				changeset_id
+			FROM
+				changeset_spec_branch_mappings
+			WHERE
+				changeset_id != 0 AND
+				owner_campaign_id = %s AND
+				campaign_spec_id = %s
  	) AND
  	((changesets.campaign_ids ? %s) OR changesets.owned_by_campaign_id = %s)
 `
