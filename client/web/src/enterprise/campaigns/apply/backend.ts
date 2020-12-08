@@ -118,15 +118,17 @@ export const changesetSpecFieldsFragment = gql`
     fragment CommonChangesetSpecFields on ChangesetSpec {
         expiresAt
         type
-        operations
-        delta {
-            titleChanged
-        }
-        changeset {
-            __typename
-            id
-            ... on ExternalChangeset {
-                title
+        applyPreview {
+            operations
+            delta {
+                titleChanged
+            }
+            changeset {
+                __typename
+                id
+                ... on ExternalChangeset {
+                    title
+                }
             }
         }
     }

@@ -1004,21 +1004,6 @@ interface ChangesetSpec {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
-
-    """
-    The operations to take to achieve the desired state of this changeset spec.
-    """
-    operations: [ChangesetSpecOperation!]!
-
-    """
-    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
-    """
-    delta: ChangesetSpecDelta!
-
-    """
-    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
-    """
-    changeset: Changeset
 }
 
 """
@@ -1048,21 +1033,6 @@ type HiddenChangesetSpec implements ChangesetSpec & Node {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
-
-    """
-    The operations to take to achieve the desired state of this changeset spec.
-    """
-    operations: [ChangesetSpecOperation!]!
-
-    """
-    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
-    """
-    delta: ChangesetSpecDelta!
-
-    """
-    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
-    """
-    changeset: Changeset
 }
 
 """
@@ -1097,21 +1067,6 @@ type VisibleChangesetSpec implements ChangesetSpec & Node {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
-
-    """
-    The operations to take to achieve the desired state of this changeset spec.
-    """
-    operations: [ChangesetSpecOperation!]!
-
-    """
-    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
-    """
-    delta: ChangesetSpecDelta!
-
-    """
-    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
-    """
-    changeset: Changeset
 }
 
 """
@@ -1279,6 +1234,39 @@ type ChangesetSpecConnection {
     nodes: [ChangesetSpec!]!
 }
 
+type ChangesetApplyPreview {
+    """
+    The operations to take to achieve the desired state of this changeset spec.
+    """
+    operations: [ChangesetSpecOperation!]!
+
+    """
+    The delta between the current changeset state and what the new changeset spec envisions the changeset to look like.
+    """
+    delta: ChangesetSpecDelta!
+
+    changesetSpec: ChangesetSpec
+    changeset: Changeset
+}
+
+"""
+TODO
+"""
+type ChangesetApplyPreviewConnection {
+    """
+    The total number of WHATEVERS in the connection.
+    """
+    totalCount: Int!
+    """
+    Pagination information.
+    """
+    pageInfo: PageInfo!
+    """
+    A list of WHATEVERS.
+    """
+    nodes: [ChangesetApplyPreview!]!
+}
+
 """
 A CampaignDescription describes a campaign.
 """
@@ -1324,6 +1312,11 @@ type CampaignSpec implements Node {
     The CampaignDescription that describes this campaign.
     """
     description: CampaignDescription!
+
+    """
+    TODO.
+    """
+    applyPreview(first: Int = 50, after: String): ChangesetApplyPreviewConnection!
 
     """
     The specs for changesets associated with this campaign.
