@@ -168,7 +168,7 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 	case *webhooks.MergeRequestApprovedEvent,
 		*webhooks.MergeRequestUnapprovedEvent,
 		*webhooks.MergeRequestUpdateEvent:
-		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.(webhooks.MergeRequestEventContainer).ToEventCommon()); err != nil {
+		if err := h.enqueueChangesetSyncFromEvent(ctx, esID, e.(webhooks.MergeRequestEventCommonContainer).ToEventCommon()); err != nil {
 			return &httpError{
 				code: http.StatusInternalServerError,
 				err:  err,
@@ -176,52 +176,14 @@ func (h *GitLabWebhook) handleEvent(ctx context.Context, extSvc *types.ExternalS
 		}
 		return nil
 
-	case *webhooks.MergeRequestCloseEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
-
-	case *webhooks.MergeRequestMergeEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
-	case *webhooks.MergeRequestReopenEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
-
-	case *webhooks.MergeRequestDraftEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
-		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
-			return &httpError{
-				code: http.StatusInternalServerError,
-				err:  errors.Wrap(err, "upserting changeset event"),
-			}
-		}
-		return nil
-
-	case *webhooks.MergeRequestUndraftEvent:
-		event := e.ToEvent()
-		pr := gitlabToPR(&e.Project, e.MergeRequest)
+	case *webhooks.MergeRequestCloseEvent,
+		*webhooks.MergeRequestMergeEvent,
+		*webhooks.MergeRequestReopenEvent,
+		*webhooks.MergeRequestDraftEvent,
+		*webhooks.MergeRequestUndraftEvent:
+		eventCommon := e.(webhooks.MergeRequestEventCommonContainer).ToEventCommon()
+		event := e.(webhooks.MergeRequestEventToEvent).ToEvent()
+		pr := gitlabToPR(&eventCommon.Project, eventCommon.MergeRequest)
 		if err := h.upsertChangesetEvent(ctx, esID, pr, event); err != nil {
 			return &httpError{
 				code: http.StatusInternalServerError,

@@ -44,21 +44,36 @@ type mergeRequestEventChanges struct {
 	} `json:"updated_at"`
 }
 
-// MergeRequestEventContainer is a common interface for types that embed
+// MergeRequestEventCommonContainer is a common interface for types that embed
 // MergeRequestEvent to provide a method that can return the embedded
 // MergeRequestEvent.
-type MergeRequestEventContainer interface {
+type MergeRequestEventCommonContainer interface {
 	ToEventCommon() *MergeRequestEventCommon
 }
 
+type keyer interface {
+	Key() string
+}
+
+// MergeRequestEventCommonContainer is a common interface for types that embed
+// MergeRequestEvent to provide a method that can return the embedded
+// MergeRequestEvent.
+type MergeRequestEventToEvent interface {
+	ToEvent() keyer
+}
+
 type MergeRequestApprovedEvent struct{ MergeRequestEventCommon }
+type MergeRequestUnapprovedEvent struct{ MergeRequestEventCommon }
+type MergeRequestUpdateEvent struct{ MergeRequestEventCommon }
+
 type MergeRequestCloseEvent struct{ MergeRequestEventCommon }
+
+var _ MergeRequestEventToEvent = (*MergeRequestCloseEvent)(nil)
+
 type MergeRequestMergeEvent struct{ MergeRequestEventCommon }
 type MergeRequestReopenEvent struct{ MergeRequestEventCommon }
-type MergeRequestUnapprovedEvent struct{ MergeRequestEventCommon }
 type MergeRequestUndraftEvent struct{ MergeRequestEventCommon }
 type MergeRequestDraftEvent struct{ MergeRequestEventCommon }
-type MergeRequestUpdateEvent struct{ MergeRequestEventCommon }
 
 func (e *MergeRequestApprovedEvent) ToEventCommon() *MergeRequestEventCommon {
 	return &e.MergeRequestEventCommon
@@ -70,7 +85,11 @@ func (e *MergeRequestUpdateEvent) ToEventCommon() *MergeRequestEventCommon {
 	return &e.MergeRequestEventCommon
 }
 
-func (e *MergeRequestUndraftEvent) ToEvent() *gitlab.UnmarkWorkInProgressEvent {
+func (e *MergeRequestUndraftEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+
+func (e *MergeRequestUndraftEvent) ToEvent() keyer {
 	user := gitlab.User{}
 	if e.User != nil {
 		user = *e.User
@@ -84,7 +103,12 @@ func (e *MergeRequestUndraftEvent) ToEvent() *gitlab.UnmarkWorkInProgressEvent {
 		},
 	}
 }
-func (e *MergeRequestDraftEvent) ToEvent() *gitlab.MarkWorkInProgressEvent {
+
+func (e *MergeRequestDraftEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+
+func (e *MergeRequestDraftEvent) ToEvent() keyer {
 	user := gitlab.User{}
 	if e.User != nil {
 		user = *e.User
@@ -98,7 +122,12 @@ func (e *MergeRequestDraftEvent) ToEvent() *gitlab.MarkWorkInProgressEvent {
 		},
 	}
 }
-func (e *MergeRequestCloseEvent) ToEvent() *gitlab.MergeRequestClosedEvent {
+
+func (e *MergeRequestCloseEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+
+func (e *MergeRequestCloseEvent) ToEvent() keyer {
 	user := gitlab.User{}
 	if e.User != nil {
 		user = *e.User
@@ -113,7 +142,12 @@ func (e *MergeRequestCloseEvent) ToEvent() *gitlab.MergeRequestClosedEvent {
 		},
 	}
 }
-func (e *MergeRequestMergeEvent) ToEvent() *gitlab.MergeRequestMergedEvent {
+
+func (e *MergeRequestMergeEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+
+func (e *MergeRequestMergeEvent) ToEvent() keyer {
 	user := gitlab.User{}
 	if e.User != nil {
 		user = *e.User
@@ -128,7 +162,12 @@ func (e *MergeRequestMergeEvent) ToEvent() *gitlab.MergeRequestMergedEvent {
 		},
 	}
 }
-func (e *MergeRequestReopenEvent) ToEvent() *gitlab.MergeRequestReopenedEvent {
+
+func (e *MergeRequestReopenEvent) ToEventCommon() *MergeRequestEventCommon {
+	return &e.MergeRequestEventCommon
+}
+
+func (e *MergeRequestReopenEvent) ToEvent() keyer {
 	user := gitlab.User{}
 	if e.User != nil {
 		user = *e.User
