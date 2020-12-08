@@ -15,6 +15,10 @@ import (
 // next page of results. An empty slice and a nil error indicates that all pages
 // have been returned.
 func (c *Client) GetMergeRequestResourceStateEvents(ctx context.Context, project *Project, iid ID) func() ([]*ResourceStateEvent, error) {
+	if MockGetMergeRequestResourceStateEvents != nil {
+		return MockGetMergeRequestResourceStateEvents(c, ctx, project, iid)
+	}
+
 	baseURL := fmt.Sprintf("projects/%d/merge_requests/%d/resource_state_events", project.ID, iid)
 	currentPage := "1"
 	return func() ([]*ResourceStateEvent, error) {
