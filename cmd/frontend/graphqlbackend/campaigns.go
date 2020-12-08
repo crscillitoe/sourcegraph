@@ -182,9 +182,7 @@ type ChangesetSpecConnectionResolver interface {
 
 type ChangesetSpecResolver interface {
 	ID() graphql.ID
-
 	Type() campaigns.ChangesetSpecDescriptionType
-
 	ExpiresAt() *DateTime
 
 	ToHiddenChangesetSpec() (HiddenChangesetSpecResolver, bool)

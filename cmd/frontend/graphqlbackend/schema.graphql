@@ -988,6 +988,18 @@ create a changeset spec, use the createChangesetSpec mutation.
 """
 interface ChangesetSpec {
     """
+    The unique ID for a changeset spec.
+
+    The ID is unguessable (i.e., long and randomly generated, not sequential). This is important
+    even though repository permissions also apply to viewers of changeset specs, because being
+    allowed to view a repository should not entitle a person to view all not-yet-published
+    changesets for that repository. Consider a campaign to fix a security vulnerability: the
+    campaign author may prefer to prepare all of the changesets in private so that the window
+    between revealing the problem and merging the fixes is as short as possible.
+    """
+    id: ID!
+
+    """
     The type of changeset spec.
     """
     type: ChangesetSpecType!

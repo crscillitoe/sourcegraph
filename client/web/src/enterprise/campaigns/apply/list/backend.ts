@@ -1,135 +1,34 @@
-import { diffStatFields, fileDiffFields } from '../../../backend/diff'
-import { gql, dataOrThrowErrors } from '../../../../../shared/src/graphql/graphql'
+import { diffStatFields, fileDiffFields } from '../../../../backend/diff'
+import { gql, dataOrThrowErrors } from '../../../../../../shared/src/graphql/graphql'
 import {
-    Scalars,
-    CampaignSpecFields,
-    CampaignSpecByIDVariables,
-    CampaignSpecByIDResult,
-    CampaignSpecChangesetSpecsResult,
-    CampaignSpecChangesetSpecsVariables,
     ChangesetSpecFileDiffsVariables,
     ChangesetSpecFileDiffsResult,
     ChangesetSpecFileDiffsFields,
-    CreateCampaignVariables,
-    CreateCampaignResult,
-    ApplyCampaignResult,
-    ApplyCampaignVariables,
-} from '../../../graphql-operations'
+    CampaignSpecChangesetApplyPreviewResult,
+    CampaignSpecChangesetApplyPreviewVariables,
+} from '../../../../graphql-operations'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
-import { requestGraphQL } from '../../../backend/graphql'
+import { requestGraphQL } from '../../../../backend/graphql'
 
-export const viewerCampaignsCodeHostsFragment = gql`
-    fragment ViewerCampaignsCodeHostsFields on CampaignsCodeHostConnection {
-        totalCount
-        nodes {
-            externalServiceURL
-            externalServiceKind
-        }
-    }
-`
-
-export const campaignSpecFragment = gql`
-    fragment CampaignSpecFields on CampaignSpec {
-        id
-        description {
-            name
-            description
-        }
-        appliesToCampaign {
-            id
-            name
-            url
-        }
-        createdAt
-        creator {
-            username
-            url
-        }
-        expiresAt
-        namespace {
-            namespaceName
-            url
-        }
-        viewerCanAdminister
-        diffStat {
-            ...DiffStatFields
-        }
-        viewerCampaignsCodeHosts(onlyWithoutCredential: true) {
-            ...ViewerCampaignsCodeHostsFields
-        }
-    }
-
-    ${viewerCampaignsCodeHostsFragment}
-
-    ${diffStatFields}
-`
-
-export const fetchCampaignSpecById = (campaignSpec: Scalars['ID']): Observable<CampaignSpecFields | null> =>
-    requestGraphQL<CampaignSpecByIDResult, CampaignSpecByIDVariables>(
-        gql`
-            query CampaignSpecByID($campaignSpec: ID!) {
-                node(id: $campaignSpec) {
-                    __typename
-                    ... on CampaignSpec {
-                        ...CampaignSpecFields
-                    }
-                }
-            }
-            ${campaignSpecFragment}
-        `,
-        { campaignSpec }
-    ).pipe(
-        map(dataOrThrowErrors),
-        map(({ node }) => {
-            if (!node) {
-                return null
-            }
-            if (node.__typename !== 'CampaignSpec') {
-                throw new Error(`The given ID is a ${node.__typename}, not a CampaignSpec`)
-            }
-            return node
-        })
-    )
-
-export const changesetSpecFieldsFragment = gql`
+const changesetSpecFieldsFragment = gql`
     fragment ChangesetSpecFields on ChangesetSpec {
         __typename
-        ... on HiddenChangesetSpec {
-            ...HiddenChangesetSpecFields
-        }
-        ... on VisibleChangesetSpec {
-            ...VisibleChangesetSpecFields
-        }
+        ...HiddenChangesetSpecFields
+        ...VisibleChangesetSpecFields
     }
 
     fragment CommonChangesetSpecFields on ChangesetSpec {
+        id
         expiresAt
         type
-        applyPreview {
-            operations
-            delta {
-                titleChanged
-            }
-            changeset {
-                __typename
-                id
-                ... on ExternalChangeset {
-                    title
-                }
-            }
-        }
     }
 
     fragment HiddenChangesetSpecFields on HiddenChangesetSpec {
-        __typename
-        id
         ...CommonChangesetSpecFields
     }
 
     fragment VisibleChangesetSpecFields on VisibleChangesetSpec {
-        __typename
-        id
         ...CommonChangesetSpecFields
         description {
             __typename
@@ -178,34 +77,55 @@ export const changesetSpecFieldsFragment = gql`
     ${diffStatFields}
 `
 
-export const queryChangesetSpecs = ({
+const changesetApplyPreviewFieldsFragment = gql`
+    fragment ChangesetApplyPreviewFields on ChangesetApplyPreview {
+        operations
+        delta {
+            titleChanged
+        }
+        changesetSpec {
+            ...ChangesetSpecFields
+        }
+        changeset {
+            __typename
+            id
+            ... on ExternalChangeset {
+                title
+            }
+        }
+    }
+
+    ${changesetSpecFieldsFragment}
+`
+
+export const queryChangesetApplyPreviews = ({
     campaignSpec,
     first,
     after,
-}: CampaignSpecChangesetSpecsVariables): Observable<
-    (CampaignSpecChangesetSpecsResult['node'] & { __typename: 'CampaignSpec' })['changesetSpecs']
+}: CampaignSpecChangesetApplyPreviewVariables): Observable<
+    (CampaignSpecChangesetApplyPreviewResult['node'] & { __typename: 'CampaignSpec' })['applyPreview']
 > =>
-    requestGraphQL<CampaignSpecChangesetSpecsResult, CampaignSpecChangesetSpecsVariables>(
+    requestGraphQL<CampaignSpecChangesetApplyPreviewResult, CampaignSpecChangesetApplyPreviewVariables>(
         gql`
-            query CampaignSpecChangesetSpecs($campaignSpec: ID!, $first: Int, $after: String) {
+            query CampaignSpecChangesetApplyPreview($campaignSpec: ID!, $first: Int, $after: String) {
                 node(id: $campaignSpec) {
                     __typename
                     ... on CampaignSpec {
-                        changesetSpecs(first: $first, after: $after) {
+                        applyPreview(first: $first, after: $after) {
                             totalCount
                             pageInfo {
                                 endCursor
                                 hasNextPage
                             }
                             nodes {
-                                ...ChangesetSpecFields
+                                ...ChangesetApplyPreviewFields
                             }
                         }
                     }
                 }
             }
 
-            ${changesetSpecFieldsFragment}
+            ${changesetApplyPreviewFieldsFragment}
         `,
         { campaignSpec, first, after }
     ).pipe(
@@ -217,7 +137,7 @@ export const queryChangesetSpecs = ({
             if (node.__typename !== 'CampaignSpec') {
                 throw new Error(`The given ID is a ${node.__typename}, not a CampaignSpec`)
             }
-            return node.changesetSpecs
+            return node.applyPreview
         })
     )
 
@@ -280,44 +200,3 @@ export const queryChangesetSpecFileDiffs = ({
             return node.description.diff
         })
     )
-
-export const createCampaign = ({
-    campaignSpec,
-}: CreateCampaignVariables): Promise<CreateCampaignResult['createCampaign']> =>
-    requestGraphQL<CreateCampaignResult, CreateCampaignVariables>(
-        gql`
-            mutation CreateCampaign($campaignSpec: ID!) {
-                createCampaign(campaignSpec: $campaignSpec) {
-                    id
-                    url
-                }
-            }
-        `,
-        { campaignSpec }
-    )
-        .pipe(
-            map(dataOrThrowErrors),
-            map(data => data.createCampaign)
-        )
-        .toPromise()
-
-export const applyCampaign = ({
-    campaignSpec,
-    campaign,
-}: ApplyCampaignVariables): Promise<ApplyCampaignResult['applyCampaign']> =>
-    requestGraphQL<ApplyCampaignResult, ApplyCampaignVariables>(
-        gql`
-            mutation ApplyCampaign($campaignSpec: ID!, $campaign: ID!) {
-                applyCampaign(campaignSpec: $campaignSpec, ensureCampaign: $campaign) {
-                    id
-                    url
-                }
-            }
-        `,
-        { campaignSpec, campaign }
-    )
-        .pipe(
-            map(dataOrThrowErrors),
-            map(data => data.applyCampaign)
-        )
-        .toPromise()
