@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChangesetSpecType, ChangesetApplyPreviewFields } from '../../../../graphql-operations'
+import { ChangesetApplyPreviewFields } from '../../../../graphql-operations'
 import InfoCircleOutlineIcon from 'mdi-react/InfoCircleOutlineIcon'
 import { ChangesetSpecAction } from './ChangesetSpecAction'
 
@@ -12,12 +12,7 @@ export const HiddenChangesetSpecNode: React.FunctionComponent<HiddenChangesetSpe
         <span className="d-none d-sm-block" />
         <ChangesetSpecAction node={node} className="hidden-changeset-spec-node__action" />
         <div className="d-flex flex-column hidden-changeset-spec-node__information">
-            <h3 className="text-muted">
-                {node.changesetSpec!.type === ChangesetSpecType.EXISTING && (
-                    <>Import changeset from a private repository</>
-                )}
-                {node.changesetSpec!.type === ChangesetSpecType.BRANCH && <>Create changeset in a private repository</>}
-            </h3>
+            <h3 className="text-muted">Changeset in a private repository</h3>
             <span className="text-danger">
                 No action will be taken on apply.{' '}
                 <InfoCircleOutlineIcon
