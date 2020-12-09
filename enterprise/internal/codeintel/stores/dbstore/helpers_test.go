@@ -241,6 +241,33 @@ func insertNearestUploads(t *testing.T, db *sql.DB, repositoryID int, uploads ma
 	}
 }
 
+func insertLinks(t *testing.T, db *sql.DB, repositoryID int, links map[string]commitgraph.LinkRelationship) {
+	if len(links) == 0 {
+		return
+	}
+
+	var rows []*sqlf.Query
+	for commit, link := range links {
+		rows = append(rows, sqlf.Sprintf(
+			"(%s, %s, %s, %s, %s, %s)",
+			repositoryID,
+			dbutil.CommitBytea(commit),
+			dbutil.NewCommitByteaOrNil(link.Ancestor),
+			link.AncestorDistance,
+			dbutil.NewCommitByteaOrNil(link.Descendant),
+			link.DescendantDistance,
+		))
+	}
+
+	query := sqlf.Sprintf(
+		`INSERT INTO lsif_nearest_uploads_links (repository_id, commit_bytea, ancestor_commit_bytea, ancestor_distance, descendant_commit_bytea, descendant_distance) VALUES %s`,
+		sqlf.Join(rows, ","),
+	)
+	if _, err := db.ExecContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...); err != nil {
+		t.Fatalf("unexpected error while updating links: %s %s", err, query.Query(sqlf.PostgresBindVar))
+	}
+}
+
 func toCommitGraphView(uploads []Upload) *commitgraph.CommitGraphView {
 	commitGraphView := commitgraph.NewCommitGraphView()
 	for _, upload := range uploads {
@@ -279,17 +306,25 @@ func scanVisibleUploads(rows *sql.Rows, queryErr error) (_ map[string][]commitgr
 	return uploadMeta, nil
 }
 
-func getVisibleUploads(t *testing.T, db *sql.DB, repositoryID int) map[string][]commitgraph.UploadMeta {
-	query := sqlf.Sprintf(
-		`SELECT encode(commit_bytea, 'hex'), upload_id, distance FROM lsif_nearest_uploads WHERE repository_id = %s AND NOT overwritten ORDER BY upload_id`,
-		repositoryID,
-	)
-	uploads, err := scanVisibleUploads(db.QueryContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...))
-	if err != nil {
-		t.Fatalf("unexpected error getting visible uploads: %s", err)
+func getVisibleUploads(t *testing.T, db *sql.DB, repositoryID int, commits []string) map[string][]int {
+	idsByCommit := map[string][]int{}
+	for _, commit := range commits {
+		query := makeVisibleUploadsQuery(repositoryID, commit)
+
+		uploadIDs, err := basestore.ScanInts(db.QueryContext(
+			context.Background(),
+			query.Query(sqlf.PostgresBindVar),
+			query.Args()...,
+		))
+		if err != nil {
+			t.Fatalf("unexpected error getting visible upload IDs: %s", err)
+		}
+		sort.Ints(uploadIDs)
+
+		idsByCommit[commit] = uploadIDs
 	}
 
-	return uploads
+	return idsByCommit
 }
 
 func getUploadsVisibleAtTip(t *testing.T, db *sql.DB, repositoryID int) []int {

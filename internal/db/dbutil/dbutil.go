@@ -409,6 +409,17 @@ func (c CommitBytea) Value() (driver.Value, error) {
 	return hex.DecodeString(string(c))
 }
 
+// NewCommitByteaOrNil wraps the given string value in a CommitBytea type
+// or returns nil.
+func NewCommitByteaOrNil(commit *string) *CommitBytea {
+	if commit == nil {
+		return nil
+	}
+
+	temp := CommitBytea(*commit)
+	return &temp
+}
+
 // Value implements the driver Valuer interface.
 func (n *NullJSONRawMessage) Value() (driver.Value, error) {
 	return n.Raw, nil

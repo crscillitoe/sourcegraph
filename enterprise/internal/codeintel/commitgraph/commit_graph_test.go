@@ -58,16 +58,7 @@ func TestCalculateVisibleUploads(t *testing.T) {
 	commitGraphView.Add(UploadMeta{UploadID: 55}, "h", "sub3/:lsif-go")
 	commitGraphView.Add(UploadMeta{UploadID: 56}, "m", "sub3/:lsif-go")
 
-	visibleUploads := map[string][]UploadMeta{}
-	for v := range CalculateVisibleUploads(testGraph, commitGraphView) {
-		visibleUploads[v.Commit] = v.Uploads
-	}
-
-	for _, uploads := range visibleUploads {
-		sort.Slice(uploads, func(i, j int) bool {
-			return uploads[i].UploadID-uploads[j].UploadID < 0
-		})
-	}
+	visibleUploads, links := makeTestGraph(testGraph, commitGraphView)
 
 	expectedVisibleUploads := map[string][]UploadMeta{
 		"a": {
@@ -106,11 +97,6 @@ func TestCalculateVisibleUploads(t *testing.T) {
 			{UploadID: 50, Flags: 4 | FlagAncestorVisible},
 			{UploadID: 54, Flags: 0 | FlagAncestorVisible},
 		},
-		"l": {
-			{UploadID: 45, Flags: 1},
-			{UploadID: 50, Flags: 5 | FlagAncestorVisible},
-			{UploadID: 54, Flags: 1 | FlagAncestorVisible | FlagOverwritten},
-		},
 		"h": {
 			{UploadID: 50, Flags: 4 | FlagAncestorVisible},
 			{UploadID: 51, Flags: 1},
@@ -135,7 +121,20 @@ func TestCalculateVisibleUploads(t *testing.T) {
 		},
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, visibleUploads); diff != "" {
-		t.Errorf("unexpected graph (-want +got):\n%s", diff)
+		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
+	}
+
+	expectedLinks := map[string]LinkRelationship{
+		"l": {
+			Commit:             "l",
+			Ancestor:           strPtr("i"),
+			AncestorDistance:   1,
+			Descendant:         strPtr("n"),
+			DescendantDistance: 1,
+		},
+	}
+	if diff := cmp.Diff(expectedLinks, links); diff != "" {
+		t.Errorf("unexpected links (-want +got):\n%s", diff)
 	}
 }
 
@@ -176,16 +175,7 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 	commitGraphView.Add(UploadMeta{UploadID: 52}, "i", "sub2/:lsif-go")
 	commitGraphView.Add(UploadMeta{UploadID: 53}, "q", "sub3/:lsif-go")
 
-	visibleUploads := map[string][]UploadMeta{}
-	for v := range CalculateVisibleUploads(testGraph, commitGraphView) {
-		visibleUploads[v.Commit] = v.Uploads
-	}
-
-	for _, uploads := range visibleUploads {
-		sort.Slice(uploads, func(i, j int) bool {
-			return uploads[i].UploadID-uploads[j].UploadID < 0
-		})
-	}
+	visibleUploads, links := makeTestGraph(testGraph, commitGraphView)
 
 	expectedVisibleUploads := map[string][]UploadMeta{
 		"a": {
@@ -218,25 +208,10 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 			{UploadID: 52, Flags: 3},
 			{UploadID: 53, Flags: 8},
 		},
-		"g": {
-			{UploadID: 51, Flags: 3 | FlagAncestorVisible},
-			{UploadID: 52, Flags: 2},
-			{UploadID: 53, Flags: 7},
-		},
-		"h": {
-			{UploadID: 51, Flags: 4 | FlagAncestorVisible},
-			{UploadID: 52, Flags: 1},
-			{UploadID: 53, Flags: 6},
-		},
 		"i": {
 			{UploadID: 51, Flags: 5 | FlagAncestorVisible},
 			{UploadID: 52, Flags: 0 | FlagAncestorVisible},
 			{UploadID: 53, Flags: 5},
-		},
-		"j": {
-			{UploadID: 51, Flags: 6 | FlagAncestorVisible},
-			{UploadID: 52, Flags: 1 | FlagAncestorVisible},
-			{UploadID: 53, Flags: 4},
 		},
 		"k": {
 			{UploadID: 51, Flags: 7 | FlagAncestorVisible},
@@ -262,10 +237,6 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 			{UploadID: 52, Flags: 4 | FlagAncestorVisible},
 			{UploadID: 53, Flags: 1},
 		},
-		"p": {
-			{UploadID: 51, Flags: 10 | FlagAncestorVisible},
-			{UploadID: 52, Flags: 5 | FlagAncestorVisible},
-		},
 		"q": {
 			{UploadID: 51, Flags: 10 | FlagAncestorVisible},
 			{UploadID: 52, Flags: 5 | FlagAncestorVisible},
@@ -273,7 +244,41 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 		},
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, visibleUploads); diff != "" {
-		t.Errorf("unexpected graph (-want +got):\n%s", diff)
+		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
+	}
+
+	expectedLinks := map[string]LinkRelationship{
+		"g": {
+			Commit:             "g",
+			Ancestor:           strPtr("f"),
+			AncestorDistance:   1,
+			Descendant:         strPtr("i"),
+			DescendantDistance: 2,
+		},
+		"h": {
+			Commit:             "h",
+			Ancestor:           strPtr("f"),
+			AncestorDistance:   2,
+			Descendant:         strPtr("i"),
+			DescendantDistance: 1,
+		},
+		"j": {
+			Commit:             "j",
+			Ancestor:           strPtr("i"),
+			AncestorDistance:   1,
+			Descendant:         strPtr("k"),
+			DescendantDistance: 1,
+		},
+		"p": {
+			Commit:             "p",
+			Ancestor:           strPtr("n"),
+			AncestorDistance:   1,
+			Descendant:         nil,
+			DescendantDistance: 0,
+		},
+	}
+	if diff := cmp.Diff(expectedLinks, links); diff != "" {
+		t.Errorf("unexpected links (-want +got):\n%s", diff)
 	}
 }
 
@@ -300,7 +305,7 @@ func TestReverseGraph(t *testing.T) {
 		"g": {"f"},
 	}
 	if diff := cmp.Diff(expectedReverseGraph, reverseGraph); diff != "" {
-		t.Errorf("unexpected graph (-want +got):\n%s", diff)
+		t.Errorf("unexpected reverse graph (-want +got):\n%s", diff)
 	}
 }
 
@@ -318,8 +323,7 @@ func BenchmarkCalculateVisibleUploads(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range CalculateVisibleUploads(commitGraph, commitGraphView) {
-		}
+		_, _ = NewGraph(commitGraph, commitGraphView).Gather()
 	}
 }
 
@@ -385,4 +389,21 @@ func readBenchmarkFile(path string) ([]byte, error) {
 	}
 
 	return contents, nil
+}
+
+// makeTestGraph calls Gather on a new graph then sorts the uploads deterministically
+// for easier comparison. Order of the upload list is not relevant to production flows.
+func makeTestGraph(commitGraph *gitserver.CommitGraph, commitGraphView *CommitGraphView) (uploads map[string][]UploadMeta, links map[string]LinkRelationship) {
+	uploads, links = NewGraph(commitGraph, commitGraphView).Gather()
+	for _, us := range uploads {
+		sort.Slice(us, func(i, j int) bool {
+			return us[i].UploadID-us[j].UploadID < 0
+		})
+	}
+
+	return uploads, links
+}
+
+func strPtr(value string) *string {
+	return &value
 }

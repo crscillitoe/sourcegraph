@@ -732,6 +732,21 @@ Indexes:
 
 ```
 
+# Table "public.lsif_nearest_uploads_links"
+```
+         Column          |  Type   | Modifiers 
+-------------------------+---------+-----------
+ repository_id           | integer | not null
+ commit_bytea            | bytea   | not null
+ ancestor_commit_bytea   | bytea   | 
+ ancestor_distance       | integer | 
+ descendant_commit_bytea | bytea   | 
+ descendant_distance     | integer | 
+Indexes:
+    "lsif_nearest_uploads_links_repository_id_commit_bytea" btree (repository_id, commit_bytea)
+
+```
+
 # Table "public.lsif_packages"
 ```
  Column  |  Type   |                         Modifiers                          

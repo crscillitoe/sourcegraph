@@ -128,6 +128,8 @@
 // 1528395746_add_is_primary_to_user_emails.up.sql (643B)
 // 1528395747_add_users_created_at_index.down.sql (60B)
 // 1528395747_add_users_created_at_index.up.sql (87B)
+// 1528395748_split_nearest_uploads.down.sql (66B)
+// 1528395748_split_nearest_uploads.up.sql (405B)
 
 package migrations
 
@@ -2756,6 +2758,46 @@ func _1528395747_add_users_created_at_indexUpSql() (*asset, error) {
 	return a, nil
 }
 
+var __1528395748_split_nearest_uploadsDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\x72\x75\xf7\xf4\xb3\xe6\xe2\x72\x09\xf2\x0f\x50\x08\x71\x74\xf2\x71\x55\xf0\x74\x53\x70\x8d\xf0\x0c\x0e\x09\x56\xc8\x29\xce\x4c\x8b\xcf\x4b\x4d\x2c\x4a\x2d\x2e\x89\x2f\x2d\xc8\xc9\x4f\x4c\x29\x8e\xcf\xc9\xcc\xcb\x2e\xb6\xe6\xe2\x72\xf6\xf7\xf5\xf5\x0c\xb1\xe6\x02\x04\x00\x00\xff\xff\xf1\xbb\xfd\x38\x42\x00\x00\x00")
+
+func _1528395748_split_nearest_uploadsDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395748_split_nearest_uploadsDownSql,
+		"1528395748_split_nearest_uploads.down.sql",
+	)
+}
+
+func _1528395748_split_nearest_uploadsDownSql() (*asset, error) {
+	bytes, err := _1528395748_split_nearest_uploadsDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395748_split_nearest_uploads.down.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x2f, 0x2b, 0xad, 0xf5, 0xa1, 0xda, 0x0, 0xbc, 0xc0, 0x39, 0x2a, 0x14, 0xc5, 0x16, 0xe5, 0xbc, 0xd, 0x51, 0x7e, 0x9c, 0x5b, 0xc5, 0x25, 0x7e, 0x7d, 0x2e, 0x9a, 0xc6, 0x61, 0xc2, 0xd7, 0xd3}}
+	return a, nil
+}
+
+var __1528395748_split_nearest_uploadsUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x7c\x90\xc1\x6a\xc3\x30\x10\x44\xef\xfa\x8a\x3d\xa6\x90\x3f\xc8\x29\x69\xd5\x20\x70\x64\xa8\x15\xc8\x4d\xc8\xd6\x16\x44\x6d\xc9\x68\xb7\x07\xff\x7d\xb1\x7d\xa8\xd5\x12\x5f\x04\x62\xde\x68\x34\x73\x91\x57\xa5\x4f\x42\xbc\x7e\xc8\xb3\x91\x60\xce\x97\x4a\x82\x7a\x07\x5d\x1b\x90\x0f\xd5\x98\x06\x7a\x0a\x9f\x36\xa2\xcb\x48\x6c\xbf\xc7\x3e\x39\x4f\xb6\x0f\xf1\x8b\xe0\x20\x00\x00\x32\x8e\x89\x02\xa7\x3c\xd9\xe0\x21\x44\x5e\xdc\xfa\x5e\x55\xc7\x45\xef\xd2\x30\x04\xb6\xed\xc4\xe8\x60\x3d\x4b\xc0\xc5\x0e\x89\x53\xb6\xff\xc9\x3f\x80\x0f\xc4\xf3\x65\x4e\x59\x25\x8f\xd4\x61\xf4\x2e\xf2\x53\xf7\x06\xd9\xfa\xc5\xcb\x6f\x6f\xa5\xdf\xe4\x63\xa7\xa9\x2d\x3a\x96\x49\xb5\xde\x9b\xe8\xde\x28\x7d\x85\x96\x33\x22\x1c\x8a\x57\x8e\xc5\x30\xcb\x67\xea\xdb\x4d\x99\x93\xf8\x09\x00\x00\xff\xff\x60\x34\xca\x88\x95\x01\x00\x00")
+
+func _1528395748_split_nearest_uploadsUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395748_split_nearest_uploadsUpSql,
+		"1528395748_split_nearest_uploads.up.sql",
+	)
+}
+
+func _1528395748_split_nearest_uploadsUpSql() (*asset, error) {
+	bytes, err := _1528395748_split_nearest_uploadsUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395748_split_nearest_uploads.up.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xe3, 0x23, 0xba, 0xec, 0x12, 0xf0, 0xee, 0x9d, 0xb1, 0x57, 0x4c, 0xb4, 0x6, 0xb4, 0xe4, 0xf6, 0x8, 0x9c, 0xf1, 0x88, 0xfa, 0x73, 0xe2, 0x77, 0x6f, 0x34, 0x92, 0x48, 0x4f, 0x30, 0x73, 0xd2}}
+	return a, nil
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -2975,6 +3017,8 @@ var _bindata = map[string]func() (*asset, error){
 	"1528395746_add_is_primary_to_user_emails.up.sql":                              _1528395746_add_is_primary_to_user_emailsUpSql,
 	"1528395747_add_users_created_at_index.down.sql":                               _1528395747_add_users_created_at_indexDownSql,
 	"1528395747_add_users_created_at_index.up.sql":                                 _1528395747_add_users_created_at_indexUpSql,
+	"1528395748_split_nearest_uploads.down.sql":                                    _1528395748_split_nearest_uploadsDownSql,
+	"1528395748_split_nearest_uploads.up.sql":                                      _1528395748_split_nearest_uploadsUpSql,
 }
 
 // AssetDebug is true if the assets were built with the debug flag enabled.
@@ -3149,6 +3193,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 	"1528395746_add_is_primary_to_user_emails.up.sql":                              {_1528395746_add_is_primary_to_user_emailsUpSql, map[string]*bintree{}},
 	"1528395747_add_users_created_at_index.down.sql":                               {_1528395747_add_users_created_at_indexDownSql, map[string]*bintree{}},
 	"1528395747_add_users_created_at_index.up.sql":                                 {_1528395747_add_users_created_at_indexUpSql, map[string]*bintree{}},
+	"1528395748_split_nearest_uploads.down.sql":                                    {_1528395748_split_nearest_uploadsDownSql, map[string]*bintree{}},
+	"1528395748_split_nearest_uploads.up.sql":                                      {_1528395748_split_nearest_uploadsUpSql, map[string]*bintree{}},
 }}
 
 // RestoreAsset restores an asset under the given directory.

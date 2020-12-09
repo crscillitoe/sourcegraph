@@ -1,51 +1,130 @@
 package commitgraph
 
-import "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/gitserver"
+import (
+	"sort"
+
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/gitserver"
+)
+
+type Graph struct {
+	commitGraphView   *CommitGraphView
+	graph             map[string][]string
+	reverseGraph      map[string][]string
+	commits           []string
+	ancestorUploads   map[string]map[string]UploadMeta
+	descendantUploads map[string]map[string]UploadMeta
+}
+
+type Envelope struct {
+	Uploads *VisibilityRelationship
+	Links   *LinkRelationship
+}
 
 type VisibilityRelationship struct {
 	Commit  string
 	Uploads []UploadMeta
 }
 
-// CalculateVisibleUploads returns a channel returning values indicating that a given
-// set of uploads are visible from a particular commit, based on the given commit graph
-// and complete set of LSIF upload metadata.
-func CalculateVisibleUploads(commitGraph *gitserver.CommitGraph, commitGraphView *CommitGraphView) <-chan VisibilityRelationship {
-	graph := commitGraph.Graph()
-	reverseGraph := reverseGraph(graph)
-	order := commitGraph.Order()
-
-	ch := make(chan VisibilityRelationship, len(order))
-
-	go func() {
-		defer close(ch)
-
-		combineVisibleUploads(
-			ch,
-			graph,
-			reverseGraph,
-			order,
-			populateUploadsByTraversal(graph, reverseGraph, order, commitGraphView, false),
-			populateUploadsByTraversal(reverseGraph, graph, order, commitGraphView, true),
-		)
-	}()
-
-	return ch
+type LinkRelationship struct {
+	Commit             string
+	Ancestor           *string
+	AncestorDistance   uint32
+	Descendant         *string
+	DescendantDistance uint32
 }
 
-// CalculateVisibleUploadsForCommit returns the set of uploads that are visible from the
-// given commit, based on the given commit graph and complete set of LSIF upload metadata.
-func CalculateVisibleUploadsForCommit(commitGraph *gitserver.CommitGraph, commitGraphView *CommitGraphView, commit string) []UploadMeta {
+// NewGraph creates a commit graph decorated with the set of uploads visible from that commit
+// based on the given commit graph and complete set of LSIF upload metadata.
+func NewGraph(commitGraph *gitserver.CommitGraph, commitGraphView *CommitGraphView) *Graph {
 	graph := commitGraph.Graph()
 	reverseGraph := reverseGraph(graph)
 	order := commitGraph.Order()
 
 	ancestorUploads := populateUploadsByTraversal(graph, reverseGraph, order, commitGraphView, false)
 	descendantUploads := populateUploadsByTraversal(reverseGraph, graph, order, commitGraphView, true)
+	sort.Strings(order)
 
-	ancestorUploadByToken, ancestorDistance := traverse(graph, ancestorUploads, commit)
-	descendantUploadsByToken, descendantDistance := traverse(reverseGraph, descendantUploads, commit)
-	return combineVisibleUploadsForCommit(ancestorUploadByToken, descendantUploadsByToken, ancestorDistance, descendantDistance)
+	return &Graph{
+		commitGraphView:   commitGraphView,
+		graph:             graph,
+		reverseGraph:      reverseGraph,
+		commits:           order,
+		ancestorUploads:   ancestorUploads,
+		descendantUploads: descendantUploads,
+	}
+}
+
+// UploadsVisibleAtCommit returns the set of uploads that are visible from the given commit.
+func (g *Graph) UploadsVisibleAtCommit(commit string) []UploadMeta {
+	ancestorUploads, ancestorDistance := traverseForUploads(g.graph, g.ancestorUploads, commit)
+	descendantUploads, descendantDistance := traverseForUploads(g.reverseGraph, g.descendantUploads, commit)
+	return combineVisibleUploadsForCommit(ancestorUploads, descendantUploads, ancestorDistance, descendantDistance)
+}
+
+// Stream returns a channel of envelope values which indicate either the set of visible uploads
+// at a particular commit, or the nearest neighbors at a particular commit, depending on the
+// value within the envelope.
+func (g *Graph) Stream() <-chan Envelope {
+	ch := make(chan Envelope)
+
+	go func() {
+		defer close(ch)
+
+		for _, commit := range g.commits {
+			ancestorCommit, ancestorDistance, found1 := traverseForCommit(g.graph, g.ancestorUploads, commit)
+			descendantCommit, descendantDistance, found2 := traverseForCommit(g.reverseGraph, g.descendantUploads, commit)
+
+			if (found1 && ancestorDistance == 0) || (found2 && descendantDistance == 0) {
+				ch <- Envelope{Uploads: &VisibilityRelationship{
+					Commit: commit,
+					Uploads: combineVisibleUploadsForCommit(
+						g.ancestorUploads[ancestorCommit],
+						g.descendantUploads[descendantCommit],
+						ancestorDistance,
+						descendantDistance,
+					),
+				}}
+			} else {
+				var ac, dc *string
+				if found1 {
+					ac = &ancestorCommit
+				}
+				if found2 {
+					dc = &descendantCommit
+				}
+
+				ch <- Envelope{Links: &LinkRelationship{
+					Commit:             commit,
+					Ancestor:           ac,
+					AncestorDistance:   ancestorDistance,
+					Descendant:         dc,
+					DescendantDistance: descendantDistance,
+				}}
+			}
+		}
+	}()
+
+	return ch
+}
+
+// Gather reads the graph's stream to completion and returns a map of the values. This
+// method is only used for convenience and testing and should not be used in a hot path.
+// It can be VERY memory intensive in production to have a reference to each commit's
+// upload metadata concurrently.
+func (g *Graph) Gather() (uploads map[string][]UploadMeta, links map[string]LinkRelationship) {
+	uploads = map[string][]UploadMeta{}
+	links = map[string]LinkRelationship{}
+
+	for v := range g.Stream() {
+		if v.Uploads != nil {
+			uploads[v.Uploads.Commit] = v.Uploads.Uploads
+		}
+		if v.Links != nil {
+			links[v.Links.Commit] = *v.Links
+		}
+	}
+
+	return uploads, links
 }
 
 // reverseGraph returns the reverse of the given graph by flipping all the edges.
@@ -78,7 +157,7 @@ func reverseGraph(graph map[string][]string) map[string][]string {
 // All such commits have a parent whose only child is the commit (or has no parent), and a single
 // child whose only parent is the commit (or has no children). This means that there is a single
 // unambiguous path to an ancestor with calculated data, and symmetrically in the other direction.
-// See combineVisibleUploads for additional details.
+// See combineVisibleUploadsForCommit for additional details.
 func populateUploadsByTraversal(graph, reverseGraph map[string][]string, order []string, commitGraphView *CommitGraphView, reverse bool) map[string]map[string]UploadMeta {
 	uploads := make(map[string]map[string]UploadMeta, len(order))
 	for i, commit := range order {
@@ -94,7 +173,7 @@ func populateUploadsByTraversal(graph, reverseGraph map[string][]string, order [
 			len(children) <= 1 && // ¬Property 2
 			len(parents) <= 1 && // ¬Property 3
 			(len(parents) == 0 || len(reverseGraph[parents[0]]) == 1) && // ¬Property 4
-			(len(children) == 0 || len(reverseGraph[children[0]]) == 1) { // ¬Property 5
+			(len(children) == 0 || len(graph[children[0]]) == 1) { // ¬Property 5
 			continue
 		}
 
@@ -167,43 +246,29 @@ func populateUploadsForCommit(uploads map[string]map[string]UploadMeta, ancestor
 	return uploadsByToken
 }
 
-// combineVisibleUploads writes values indicating the set of uploads visible at each commit in the
-// given graph. This is done by combining the maps produced by traversing the graph in both directions
-// and pre-computing the values for select commits (see populateUploadsByTraversal).
-//
-// For each commit, we determine the closet ancestor and descendant commits with pre-computed data.
-// There is at most one of each commit. We then merge the uploads visible from these commits, with
-// the distances of each upload meta value adjusted proportionally to the traversal distance.
-//
-// See combineVisibleUploadsForCommit for more details about the merge logic.
-func combineVisibleUploads(ch chan<- VisibilityRelationship, graph, reverseGraph map[string][]string, order []string, ancestorUploads, descendantUploads map[string]map[string]UploadMeta) {
-	for _, commit := range order {
-		ancestorUploads, ancestorDistance := traverse(graph, ancestorUploads, commit)
-		descendantUploads, descendantDistance := traverse(reverseGraph, descendantUploads, commit)
-		uploads := combineVisibleUploadsForCommit(ancestorUploads, descendantUploads, ancestorDistance, descendantDistance)
-		ch <- VisibilityRelationship{Commit: commit, Uploads: uploads}
-	}
+// traverseForUploads returns the value in the given uploads map whose key matches the first ancestor
+// in the graph with a value present in the map. The distance in the graph between the original commit
+// and the ancestor is also returned.
+func traverseForUploads(graph map[string][]string, uploads map[string]map[string]UploadMeta, commit string) (map[string]UploadMeta, uint32) {
+	commit, distance, _ := traverseForCommit(graph, uploads, commit)
+	return uploads[commit], distance
 }
 
-// traverse returns the value in the given uploads map whose key matches the first ancestor in the
-// graph with a value present in the map. The distance in the graph between the original commit and
-// the ancestor is also returned.
-//
-// NOTE: Explicitly assigning nil/empty map into the uploads map will cause the traversal to stop
-// at that commit, returning a map with zero uploads. It is actually advised to assign nil maps
-// at certain points in the graph so that traversals towards the edges of the graph are kept short.
+// traverseForCommit returns the commit in the given uploads map matching the first ancestor in
+// the graph with a value present in the map. The distance in the graph between the original commit
+// and the ancestor is also returned.
 //
 // NOTE: We assume that each commit with multiple parents have been assigned data while walking
 // the graph in topological order. If that is not the case, one parent will be chosen arbitrarily.
-func traverse(graph map[string][]string, uploads map[string]map[string]UploadMeta, commit string) (uploadsByToken map[string]UploadMeta, distance uint32) {
+func traverseForCommit(graph map[string][]string, uploads map[string]map[string]UploadMeta, commit string) (string, uint32, bool) {
 	for distance := uint32(0); ; distance++ {
-		if uploadsByToken, ok := uploads[commit]; ok {
-			return uploadsByToken, distance
+		if _, ok := uploads[commit]; ok {
+			return commit, distance, true
 		}
 
 		parents := graph[commit]
 		if len(parents) == 0 {
-			return nil, 0
+			return "", 0, false
 		}
 
 		commit = parents[0]

@@ -3,7 +3,6 @@ package dbstore
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"time"
 
 	"github.com/keegancsmith/sqlf"
@@ -92,7 +91,7 @@ func (s *Store) GetDumpByID(ctx context.Context, id int) (_ Dump, _ bool, err er
 			d.id,
 			d.commit,
 			d.root,
-			EXISTS (SELECT 1 FROM lsif_uploads_visible_at_tip where repository_id = d.repository_id and upload_id = d.id) AS visible_at_tip,
+			`+visibleAtTipFragment+` AS visible_at_tip,
 			d.uploaded_at,
 			d.state,
 			d.failure_message,
@@ -108,6 +107,8 @@ func (s *Store) GetDumpByID(ctx context.Context, id int) (_ Dump, _ bool, err er
 	`, id)))
 }
 
+const visibleAtTipFragment = `EXISTS (SELECT 1 FROM lsif_uploads_visible_at_tip WHERE repository_id = d.repository_id AND upload_id = d.id)`
+
 // OldestDumpForRepository returns the oldest dump for the given repository and boolean flag indicating its existence.
 func (s *Store) OldestDumpForRepository(ctx context.Context, repositoryID int) (_ Dump, _ bool, err error) {
 	ctx, endObservation := s.operations.getDumpByID.With(ctx, &err, observation.Args{LogFields: []log.Field{
@@ -120,7 +121,7 @@ func (s *Store) OldestDumpForRepository(ctx context.Context, repositoryID int) (
 			d.id,
 			d.commit,
 			d.root,
-			EXISTS (SELECT 1 FROM lsif_uploads_visible_at_tip where repository_id = d.repository_id and upload_id = d.id) AS visible_at_tip,
+			`+visibleAtTipFragment+` AS visible_at_tip,
 			d.uploaded_at,
 			d.state,
 			d.failure_message,
@@ -168,11 +169,12 @@ func (s *Store) FindClosestDumps(ctx context.Context, repositoryID int, commit, 
 	return scanDumps(s.Store.Query(
 		ctx,
 		sqlf.Sprintf(`
+			WITH visible_uploads AS (%s)
 			SELECT
 				d.id,
 				d.commit,
 				d.root,
-				EXISTS (SELECT 1 FROM lsif_uploads_visible_at_tip where repository_id = d.repository_id and upload_id = d.id) AS visible_at_tip,
+				`+visibleAtTipFragment+` AS visible_at_tip,
 				d.uploaded_at,
 				d.state,
 				d.failure_message,
@@ -184,10 +186,11 @@ func (s *Store) FindClosestDumps(ctx context.Context, repositoryID int, commit, 
 				d.repository_id,
 				d.repository_name,
 				d.indexer
-			FROM lsif_nearest_uploads u
-			JOIN lsif_dumps_with_repository_name d ON d.id = u.upload_id
-			WHERE u.repository_id = %s AND u.commit_bytea = %s AND NOT u.overwritten AND %s
-		`, repositoryID, dbutil.CommitBytea(commit), sqlf.Join(conds, " AND "))))
+			FROM visible_uploads vu
+			JOIN lsif_dumps_with_repository_name d ON d.id = vu.upload_id
+			WHERE %s
+		`, makeVisibleUploadsQuery(repositoryID, commit), sqlf.Join(conds, " AND ")),
+	))
 }
 
 // FindClosestDumpsFromGraphFragment returns the set of dumps that can most accurately answer queries for the given repository, commit,
@@ -209,25 +212,28 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 
 	commits := make([]*sqlf.Query, 0, len(graph.Graph()))
 	for commit := range graph.Graph() {
-		commits = append(commits, sqlf.Sprintf("%s", commit))
+		commits = append(commits, sqlf.Sprintf("%s", dbutil.CommitBytea(commit)))
 	}
 
-	commitGraphView, err := scanCommitGraphView(s.Store.Query(ctx, sqlf.Sprintf(
-		`
-			SELECT nu.upload_id, encode(nu.commit_bytea, 'hex'), md5(u.root || ':' || u.indexer) as token, nu.distance, nu.ancestor_visible, nu.overwritten
-			FROM lsif_nearest_uploads nu
-			JOIN lsif_uploads u ON u.id = nu.upload_id
-			WHERE nu.repository_id = %s AND encode(nu.commit_bytea, 'hex') IN (%s) AND nu.ancestor_visible
-		`,
-		repositoryID,
-		sqlf.Join(commits, ", "),
-	)))
+	commitGraphView, err := scanCommitGraphView(s.Store.Query(ctx, sqlf.Sprintf(`
+		WITH visible_uploads AS (`+candidateVisibleUploadsQuery+`)
+		SELECT
+			vu.upload_id,
+			encode(vu.commit_bytea, 'hex'),
+			md5(u.root || ':' || u.indexer) as token,
+			vu.distance,
+			vu.ancestor_visible,
+			vu.overwritten
+		FROM visible_uploads vu
+		JOIN lsif_uploads u ON u.id = vu.upload_id
+		WHERE vu.repository_id = %s AND vu.commit_bytea IN (%s) AND vu.ancestor_visible
+	`, repositoryID, sqlf.Join(commits, ", "))))
 	if err != nil {
 		return nil, err
 	}
 
 	var ids []*sqlf.Query
-	for _, uploadMeta := range commitgraph.CalculateVisibleUploadsForCommit(graph, commitGraphView, commit) {
+	for _, uploadMeta := range commitgraph.NewGraph(graph, commitGraphView).UploadsVisibleAtCommit(commit) {
 		if (uploadMeta.Flags & commitgraph.FlagOverwritten) == 0 {
 			ids = append(ids, sqlf.Sprintf("%d", uploadMeta.UploadID))
 		}
@@ -245,7 +251,7 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 				d.id,
 				d.commit,
 				d.root,
-				EXISTS (SELECT 1 FROM lsif_uploads_visible_at_tip where repository_id = d.repository_id and upload_id = d.id) AS visible_at_tip,
+				`+visibleAtTipFragment+` AS visible_at_tip,
 				d.uploaded_at,
 				d.state,
 				d.failure_message,
@@ -261,6 +267,56 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 			WHERE d.id IN (%s) AND %s
 		`, sqlf.Join(ids, ","), sqlf.Join(conds, " AND ")),
 	))
+}
+
+// candidateVisibleUploadsQuery returns, for every commit, the set of uploads visible
+// by looking at that commit's row in the lsif_nearest_uploads, and the (adjusted) set
+// of uploads visible from that commit's nearest ancestor and descendant according to
+// the lsif_nearest_uploads_links table. NB: A commit should be in exactly one of the
+// tables.
+const candidateVisibleUploadsQuery = `
+	SELECT
+		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
+		nu.commit_bytea, nu.distance
+	FROM lsif_nearest_uploads nu
+UNION (
+	SELECT
+		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
+		-- Adjust commit and distance
+		ul.commit_bytea, nu.distance + ul.ancestor_distance
+	FROM lsif_nearest_uploads_links ul
+	JOIN lsif_nearest_uploads nu
+		ON nu.repository_id = ul.repository_id
+		AND nu.commit_bytea = ul.ancestor_commit_bytea
+) UNION (
+	SELECT
+		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
+		-- Adjust commit and distance
+		ul.commit_bytea, nu.distance + ul.descendant_distance
+	FROM lsif_nearest_uploads_links ul
+	JOIN lsif_nearest_uploads nu
+		ON nu.repository_id = ul.repository_id
+		AND nu.commit_bytea = ul.descendant_commit_bytea
+)
+`
+
+// makeVisibleUploadsQuery returns a SQL query that returns the set of visible uploads
+// for a particular commit. This query performs the merging of multiple sets of uploads
+// visible from an ancestor, a descendant, and any uploads defined on the commit itself.
+func makeVisibleUploadsQuery(repositoryID int, commit string) *sqlf.Query {
+	return sqlf.Sprintf(`
+		SELECT
+			t.upload_id
+		FROM (
+			SELECT
+				t.*,
+				row_number() OVER (PARTITION BY root, indexer ORDER BY distance) AS r
+			FROM (`+candidateVisibleUploadsQuery+`) t
+			JOIN lsif_uploads u ON u.id = upload_id
+			WHERE u.repository_id = %s AND t.commit_bytea = %s
+		) t
+		WHERE NOT t.overwritten AND t.r <= 1
+	`, repositoryID, dbutil.CommitBytea(commit))
 }
 
 func makeFindClosestDumpConditions(path string, rootMustEnclosePath bool, indexer string) (conds []*sqlf.Query) {
@@ -283,7 +339,7 @@ func makeFindClosestDumpConditions(path string, rootMustEnclosePath bool, indexe
 // background.
 func (s *Store) SoftDeleteOldDumps(ctx context.Context, maxAge time.Duration, now time.Time) (count int, err error) {
 	ctx, endObservation := s.operations.softDeleteOldDumps.With(ctx, &err, observation.Args{LogFields: []log.Field{
-		log.String("maxAge", fmt.Sprintf("%s", maxAge)),
+		log.String("maxAge", maxAge.String()),
 	}})
 	defer endObservation(1, observation.Args{})
 
