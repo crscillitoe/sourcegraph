@@ -703,6 +703,7 @@ Indexes:
  outfile         | text                     | not null
  log_contents    | text                     | 
  execution_logs  | json[]                   | 
+ local_steps     | jsonb[]                  | 
 Indexes:
     "lsif_indexes_pkey" PRIMARY KEY, btree (id)
 Check constraints:

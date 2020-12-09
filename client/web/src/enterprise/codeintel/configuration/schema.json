@@ -26,7 +26,11 @@
         }
       },
       "additionalProperties": false,
-      "required": ["root", "image", "commands"]
+      "required": [
+        "root",
+        "image",
+        "commands"
+      ]
     }
   },
   "type": "object",
@@ -46,12 +50,20 @@
         "type": "object",
         "properties": {
           "steps": {
-            "description": "A set of steps performed before this index job.",
+            "description": "A set of steps performed before this index job. Changes are only reflected in the repository directory.",
             "type": "array",
             "items": {
               "$ref": "#/definitions/docker_step"
             },
             "additionalItems": false
+          },
+          "local_steps": {
+            "type": "array",
+            "description": "A commands to run in the docker container.",
+            "items": {
+              "type": "string",
+              "description": "An argument to docker run."
+            }
           },
           "root": {
             "description": "The path relative to the repository root where the indexer runs.",
@@ -76,11 +88,20 @@
           }
         },
         "additionalProperties": false,
-        "required": ["steps", "root", "indexer", "indexer_args", "outfile"]
+        "required": [
+          "steps",
+          "root",
+          "indexer",
+          "indexer_args",
+          "outfile"
+        ]
       },
       "additionalItems": false
     }
   },
   "additionalProperties": false,
-  "required": ["shared_steps", "index_jobs"]
+  "required": [
+    "shared_steps",
+    "index_jobs"
+  ]
 }

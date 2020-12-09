@@ -264,6 +264,7 @@ func convertIndexConfiguration(repositoryID int, commit string, indexConfigurati
 			RepositoryID: repositoryID,
 			State:        "queued",
 			DockerSteps:  dockerSteps,
+			LocalSteps:   indexJob.LocalSteps,
 			Root:         indexJob.Root,
 			Indexer:      indexJob.Indexer,
 			IndexerArgs:  indexJob.IndexerArgs,
@@ -290,10 +291,11 @@ func convertInferredConfiguration(repositoryID int, commit string, indexJobs []i
 			Commit:       commit,
 			State:        "queued",
 			DockerSteps:  dockerSteps,
-			Root:         indexJob.Root,
-			Indexer:      indexJob.Indexer,
-			IndexerArgs:  indexJob.IndexerArgs,
-			Outfile:      indexJob.Outfile,
+			// TODO(nsc) LocalSteps
+			Root:        indexJob.Root,
+			Indexer:     indexJob.Indexer,
+			IndexerArgs: indexJob.IndexerArgs,
+			Outfile:     indexJob.Outfile,
 		})
 	}
 
