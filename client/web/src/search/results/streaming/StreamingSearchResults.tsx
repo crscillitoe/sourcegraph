@@ -36,9 +36,6 @@ import FileIcon from 'mdi-react/FileIcon'
 import { isDefined } from '../../../../../shared/src/util/types'
 import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
 import SearchIcon from 'mdi-react/SearchIcon'
-import AlertCircleIcon from 'mdi-react/AlertCircleIcon'
-import { buildSearchURLQuery } from '../../../../../shared/src/util/url'
-import { Link } from 'react-router-dom'
 import { SearchAlert } from '../SearchAlert'
 
 export interface StreamingSearchResultsProps
