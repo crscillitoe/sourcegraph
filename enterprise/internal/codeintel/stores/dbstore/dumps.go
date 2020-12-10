@@ -221,12 +221,10 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 			vu.upload_id,
 			encode(vu.commit_bytea, 'hex'),
 			md5(u.root || ':' || u.indexer) as token,
-			vu.distance,
-			vu.ancestor_visible,
-			vu.overwritten
+			vu.distance
 		FROM visible_uploads vu
 		JOIN lsif_uploads u ON u.id = vu.upload_id
-		WHERE vu.repository_id = %s AND vu.commit_bytea IN (%s) AND vu.ancestor_visible
+		WHERE vu.repository_id = %s AND vu.commit_bytea IN (%s)
 	`, repositoryID, sqlf.Join(commits, ", "))))
 	if err != nil {
 		return nil, err
@@ -234,9 +232,7 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 
 	var ids []*sqlf.Query
 	for _, uploadMeta := range commitgraph.NewGraph(graph, commitGraphView).UploadsVisibleAtCommit(commit) {
-		if (uploadMeta.Flags & commitgraph.FlagOverwritten) == 0 {
-			ids = append(ids, sqlf.Sprintf("%d", uploadMeta.UploadID))
-		}
+		ids = append(ids, sqlf.Sprintf("%d", uploadMeta.UploadID))
 	}
 	if len(ids) == 0 {
 		return nil, nil
@@ -275,28 +271,15 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 // the lsif_nearest_uploads_links table. NB: A commit should be in exactly one of the
 // tables.
 const candidateVisibleUploadsQuery = `
-	SELECT
-		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
-		nu.commit_bytea, nu.distance
+	SELECT nu.repository_id, nu.upload_id, nu.commit_bytea, nu.distance
 	FROM lsif_nearest_uploads nu
 UNION (
-	SELECT
-		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
-		-- Adjust commit and distance
-		ul.commit_bytea, nu.distance + ul.ancestor_distance
+	-- Adjust commit and distance
+	SELECT nu.repository_id, nu.upload_id, ul.commit_bytea, nu.distance + ul.distance
 	FROM lsif_nearest_uploads_links ul
 	JOIN lsif_nearest_uploads nu
 		ON nu.repository_id = ul.repository_id
 		AND nu.commit_bytea = ul.ancestor_commit_bytea
-) UNION (
-	SELECT
-		nu.repository_id, nu.upload_id, nu.ancestor_visible, nu.overwritten,
-		-- Adjust commit and distance
-		ul.commit_bytea, nu.distance + ul.descendant_distance
-	FROM lsif_nearest_uploads_links ul
-	JOIN lsif_nearest_uploads nu
-		ON nu.repository_id = ul.repository_id
-		AND nu.commit_bytea = ul.descendant_commit_bytea
 )
 `
 
@@ -315,7 +298,7 @@ func makeVisibleUploadsQuery(repositoryID int, commit string) *sqlf.Query {
 			JOIN lsif_uploads u ON u.id = upload_id
 			WHERE u.repository_id = %s AND t.commit_bytea = %s
 		) t
-		WHERE NOT t.overwritten AND t.r <= 1
+		WHERE t.r <= 1
 	`, repositoryID, dbutil.CommitBytea(commit))
 }
 

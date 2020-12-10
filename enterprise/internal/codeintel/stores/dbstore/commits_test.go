@@ -65,8 +65,8 @@ func TestHasCommit(t *testing.T) {
 		{51, makeCommit(1), false},
 	}
 
-	insertNearestUploads(t, dbconn.Global, 50, map[string][]commitgraph.UploadMeta{makeCommit(1): {{UploadID: 42, Flags: 1}}})
-	insertNearestUploads(t, dbconn.Global, 51, map[string][]commitgraph.UploadMeta{makeCommit(2): {{UploadID: 43, Flags: 2}}})
+	insertNearestUploads(t, dbconn.Global, 50, map[string][]commitgraph.UploadMeta{makeCommit(1): {{UploadID: 42, Distance: 1}}})
+	insertNearestUploads(t, dbconn.Global, 51, map[string][]commitgraph.UploadMeta{makeCommit(2): {{UploadID: 43, Distance: 2}}})
 
 	for _, testCase := range testCases {
 		name := fmt.Sprintf("repositoryID=%d commit=%s", testCase.repositoryID, testCase.commit)
@@ -153,11 +153,11 @@ func TestCalculateVisibleUploads(t *testing.T) {
 		makeCommit(3): {2},
 		makeCommit(4): {2},
 		makeCommit(5): {1},
-		makeCommit(6): {3},
+		makeCommit(6): {1},
 		makeCommit(7): {3},
 		makeCommit(8): {1},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads)), UploadMetaComparer); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
@@ -202,11 +202,10 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 	}
 
 	expectedVisibleUploads := map[string][]int{
-		makeCommit(1): {1},
 		makeCommit(2): {1},
 		makeCommit(3): {1},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads)), UploadMetaComparer); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
@@ -242,10 +241,9 @@ func TestCalculateVisibleUploadsDistinctRoots(t *testing.T) {
 	}
 
 	expectedVisibleUploads := map[string][]int{
-		makeCommit(1): {1, 2},
 		makeCommit(2): {1, 2},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads)), UploadMetaComparer); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
@@ -308,14 +306,14 @@ func TestCalculateVisibleUploadsOverlappingRoots(t *testing.T) {
 	}
 
 	expectedVisibleUploads := map[string][]int{
-		makeCommit(1): {1, 2, 3, 4, 5},
+		makeCommit(1): {1, 2},
 		makeCommit(2): {1, 2, 3, 4, 5},
 		makeCommit(3): {1, 2, 4, 5, 6},
 		makeCommit(4): {1, 2, 3, 4, 7},
 		makeCommit(5): {1, 2, 6, 7, 8},
 		makeCommit(6): {1, 2, 7, 8, 9},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads)), UploadMetaComparer); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
@@ -360,13 +358,13 @@ func TestCalculateVisibleUploadsIndexerName(t *testing.T) {
 	}
 
 	expectedVisibleUploads := map[string][]int{
-		makeCommit(1): {1, 2, 3, 4, 5, 6, 7, 8},
-		makeCommit(2): {1, 2, 3, 4, 5, 6, 7, 8},
-		makeCommit(3): {1, 2, 3, 4, 5, 6, 7, 8},
+		makeCommit(1): {1, 5},
+		makeCommit(2): {1, 2, 5, 6},
+		makeCommit(3): {1, 2, 3, 5, 6, 7},
 		makeCommit(4): {1, 2, 3, 4, 5, 6, 7, 8},
 		makeCommit(5): {1, 2, 3, 4, 5, 6, 7, 8},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads)), UploadMetaComparer); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 

@@ -7,12 +7,11 @@ import (
 )
 
 type Graph struct {
-	commitGraphView   *CommitGraphView
-	graph             map[string][]string
-	reverseGraph      map[string][]string
-	commits           []string
-	ancestorUploads   map[string]map[string]UploadMeta
-	descendantUploads map[string]map[string]UploadMeta
+	commitGraphView *CommitGraphView
+	graph           map[string][]string
+	reverseGraph    map[string][]string // TODO - can just do count
+	commits         []string
+	ancestorUploads map[string]map[string]UploadMeta
 }
 
 type Envelope struct {
@@ -26,11 +25,9 @@ type VisibilityRelationship struct {
 }
 
 type LinkRelationship struct {
-	Commit             string
-	Ancestor           *string
-	AncestorDistance   uint32
-	Descendant         *string
-	DescendantDistance uint32
+	Commit         string
+	AncestorCommit string
+	Distance       uint32
 }
 
 // NewGraph creates a commit graph decorated with the set of uploads visible from that commit
@@ -41,24 +38,21 @@ func NewGraph(commitGraph *gitserver.CommitGraph, commitGraphView *CommitGraphVi
 	order := commitGraph.Order()
 
 	ancestorUploads := populateUploadsByTraversal(graph, reverseGraph, order, commitGraphView, false)
-	descendantUploads := populateUploadsByTraversal(reverseGraph, graph, order, commitGraphView, true)
 	sort.Strings(order)
 
 	return &Graph{
-		commitGraphView:   commitGraphView,
-		graph:             graph,
-		reverseGraph:      reverseGraph,
-		commits:           order,
-		ancestorUploads:   ancestorUploads,
-		descendantUploads: descendantUploads,
+		commitGraphView: commitGraphView,
+		graph:           graph,
+		reverseGraph:    reverseGraph,
+		commits:         order,
+		ancestorUploads: ancestorUploads,
 	}
 }
 
 // UploadsVisibleAtCommit returns the set of uploads that are visible from the given commit.
 func (g *Graph) UploadsVisibleAtCommit(commit string) []UploadMeta {
 	ancestorUploads, ancestorDistance := traverseForUploads(g.graph, g.ancestorUploads, commit)
-	descendantUploads, descendantDistance := traverseForUploads(g.reverseGraph, g.descendantUploads, commit)
-	return combineVisibleUploadsForCommit(ancestorUploads, descendantUploads, ancestorDistance, descendantDistance)
+	return combineVisibleUploadsForCommit(ancestorUploads, ancestorDistance)
 }
 
 // Stream returns a channel of envelope values which indicate either the set of visible uploads
@@ -71,31 +65,20 @@ func (g *Graph) Stream() <-chan Envelope {
 		defer close(ch)
 
 		for _, commit := range g.commits {
-			ancestorCommit, ancestorDistance, found1 := traverseForCommit(g.graph, g.ancestorUploads, commit)
-			descendantCommit, descendantDistance, found2 := traverseForCommit(g.reverseGraph, g.descendantUploads, commit)
-			if !found1 && !found2 {
+			ancestorCommit, ancestorDistance, found := traverseForCommit(g.graph, g.ancestorUploads, commit)
+			if !found {
 				continue
 			}
 
 			ancestorVisibleUploads := g.ancestorUploads[ancestorCommit]
-			descendantVisibleUploads := g.descendantUploads[descendantCommit]
-			if len(ancestorVisibleUploads)+len(descendantVisibleUploads) == 0 {
+			if len(ancestorVisibleUploads) == 0 {
 				continue
 			}
 
-			uploads := combineVisibleUploadsForCommit(
-				ancestorVisibleUploads,
-				descendantVisibleUploads,
-				ancestorDistance,
-				descendantDistance,
-			)
+			// TODO - rename to normalize
+			uploads := combineVisibleUploadsForCommit(ancestorVisibleUploads, ancestorDistance)
 
-			threshold := 1
-			if found1 && found2 {
-				threshold = 2
-			}
-
-			if (found1 && ancestorDistance == 0) || (found2 && descendantDistance == 0) || len(uploads) <= threshold {
+			if ancestorDistance == 0 || len(uploads) <= 1 {
 				ch <- Envelope{
 					Uploads: &VisibilityRelationship{
 						Commit:  commit,
@@ -110,11 +93,9 @@ func (g *Graph) Stream() <-chan Envelope {
 
 				ch <- Envelope{
 					Links: &LinkRelationship{
-						Commit:             commit,
-						Ancestor:           strPtrOk(ancestorCommit, found1),
-						AncestorDistance:   ancestorDistance,
-						Descendant:         strPtrOk(descendantCommit, found2),
-						DescendantDistance: descendantDistance,
+						Commit:         commit,
+						AncestorCommit: ancestorCommit,
+						Distance:       ancestorDistance,
 					},
 				}
 			}
@@ -122,14 +103,6 @@ func (g *Graph) Stream() <-chan Envelope {
 	}()
 
 	return ch
-}
-
-func strPtrOk(value string, ok bool) *string {
-	if !ok {
-		return nil
-	}
-
-	return &value
 }
 
 // Gather reads the graph's stream to completion and returns a map of the values. This
@@ -191,14 +164,24 @@ func populateUploadsByTraversal(graph, reverseGraph map[string][]string, order [
 		}
 
 		parents := graph[commit]
-		children := reverseGraph[commit]
 
-		_, ok := commitGraphView.Meta[commit]
-		if !ok && // ¬Property 1
-			len(children) <= 1 && // ¬Property 2
-			len(parents) <= 1 && // ¬Property 3
-			(len(parents) == 0 || len(reverseGraph[parents[0]]) == 1) && // ¬Property 4
-			(len(children) == 0 || len(graph[children[0]]) == 1) { // ¬Property 5
+		if ok := func() bool {
+			if _, ok := commitGraphView.Meta[commit]; ok {
+				return true
+			}
+
+			if len(graph[commit]) > 1 {
+				return true
+			}
+
+			for _, child := range reverseGraph[commit] {
+				if len(graph[child]) > 1 {
+					return true
+				}
+			}
+
+			return false
+		}(); !ok {
 			continue
 		}
 
@@ -259,7 +242,7 @@ func populateUploadsForCommit(uploads map[string]map[string]UploadMeta, ancestor
 			token := commitGraphView.Tokens[upload.UploadID]
 
 			// Increase distance from source before comparison
-			upload.Flags += distance
+			upload.Distance += distance
 
 			// Only update upload for this token if distance of new upload is less than current one
 			if currentUpload, ok := uploadsByToken[token]; !ok || replaces(upload, currentUpload) {
@@ -300,6 +283,7 @@ func traverseForCommit(graph map[string][]string, uploads map[string]map[string]
 	}
 }
 
+// TODO - stupid
 // combineVisibleUploadsForCommit combines sets of uploads visible by looking in opposite directions
 // in the graph. This will produce a flat list of upload meta objects for each commit that consists of:
 //
@@ -309,45 +293,17 @@ func traverseForCommit(graph map[string][]string, uploads map[string]map[string]
 //   3. the set of descendant-visible uploads where there exists an ancestor-visible upload with an
 //      equivalent root and indexer value but a greater distance. In this case, the ancestor-visible
 //      upload is also present in the list, but is flagged as overwritten.
-func combineVisibleUploadsForCommit(ancestorVisibleUploads, descendantVisibleUploads map[string]UploadMeta, ancestorDistance, descendantDistance uint32) []UploadMeta {
+func combineVisibleUploadsForCommit(ancestorVisibleUploads map[string]UploadMeta, ancestorDistance uint32) []UploadMeta {
 	// The capacity chosen here is an underestimate, but seems to perform well in
 	// benchmarks using live user data. See populateUploadsForCommit for a simlar
 	// implementation note.
-	capacity := len(ancestorVisibleUploads)
-	if temp := len(descendantVisibleUploads); temp > capacity {
-		capacity = temp
-	}
-	uploads := make([]UploadMeta, 0, capacity)
+	uploads := make([]UploadMeta, 0, len(ancestorVisibleUploads))
 
-	for token, ancestorUpload := range ancestorVisibleUploads {
-		ancestorUpload.Flags += ancestorDistance
-		ancestorUpload.Flags |= FlagAncestorVisible
-
-		if descendantUpload, ok := descendantVisibleUploads[token]; ok {
-			descendantUpload.Flags += descendantDistance
-			descendantUpload.Flags &^= FlagAncestorVisible
-
-			// If the matching descendant upload has a smaller distance
-			if replaces(descendantUpload, ancestorUpload) {
-				// Mark the ancestor upload as overwritten
-				ancestorUpload.Flags |= FlagOverwritten
-				// Add the descendant upload
-				uploads = append(uploads, descendantUpload)
-			}
-		}
+	for _, ancestorUpload := range ancestorVisibleUploads {
+		ancestorUpload.Distance += ancestorDistance
 
 		// Add all ancestor uploads
 		uploads = append(uploads, ancestorUpload)
-	}
-
-	for token, descendantUpload := range descendantVisibleUploads {
-		descendantUpload.Flags += descendantDistance
-		descendantUpload.Flags &^= FlagAncestorVisible
-
-		// Add all descendant uploads that have no ancestor matches
-		if _, ok := ancestorVisibleUploads[token]; !ok {
-			uploads = append(uploads, descendantUpload)
-		}
 	}
 
 	return uploads
@@ -356,8 +312,5 @@ func combineVisibleUploadsForCommit(ancestorVisibleUploads, descendantVisibleUpl
 // replaces returns true if upload1 has a smaller distance than upload2.
 // Ties are broken by the minimum upload identifier to remain determinstic.
 func replaces(upload1, upload2 UploadMeta) bool {
-	distance1 := upload1.Flags & MaxDistance
-	distance2 := upload2.Flags & MaxDistance
-
-	return distance1 < distance2 || (distance1 == distance2 && upload1.UploadID < upload2.UploadID)
+	return upload1.Distance < upload2.Distance || (upload1.Distance == upload2.Distance && upload1.UploadID < upload2.UploadID)
 }

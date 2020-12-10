@@ -26,17 +26,9 @@ func scanCommitGraphView(rows *sql.Rows, queryErr error) (_ *commitgraph.CommitG
 	for rows.Next() {
 		var meta commitgraph.UploadMeta
 		var commit, token string
-		var ancestorVisible, overwritten bool
 
-		if err := rows.Scan(&meta.UploadID, &commit, &token, &meta.Flags, &ancestorVisible, &overwritten); err != nil {
+		if err := rows.Scan(&meta.UploadID, &commit, &token, &meta.Distance); err != nil {
 			return nil, err
-		}
-
-		if ancestorVisible {
-			meta.Flags |= commitgraph.FlagAncestorVisible
-		}
-		if overwritten {
-			meta.Flags |= commitgraph.FlagOverwritten
 		}
 
 		commitGraphView.Add(meta, commit, token)
@@ -155,7 +147,7 @@ func (s *Store) CalculateVisibleUploads(ctx context.Context, repositoryID int, c
 	// Pull all queryable upload metadata known to this repository so we can correlate
 	// it with the current  commit graph.
 	commitGraphView, err := scanCommitGraphView(tx.Store.Query(ctx, sqlf.Sprintf(`
-		SELECT id, commit, md5(root || ':' || indexer) as token, 0 as distance, true as ancestor_visible, false as overwritten
+		SELECT id, commit, md5(root || ':' || indexer) as token, 0 as distance
 		FROM lsif_uploads
 		WHERE state = 'completed' AND repository_id = %s
 	`, repositoryID)))
@@ -186,8 +178,6 @@ func (s *Store) CalculateVisibleUploads(ctx context.Context, repositoryID int, c
 		"commit_bytea",
 		"upload_id",
 		"distance",
-		"ancestor_visible",
-		"overwritten",
 	)
 
 	// Update the commits not inserted into the table above by adding links to a unique
@@ -201,9 +191,7 @@ func (s *Store) CalculateVisibleUploads(ctx context.Context, repositoryID int, c
 		"repository_id",
 		"commit_bytea",
 		"ancestor_commit_bytea",
-		"ancestor_distance",
-		"descendant_commit_bytea",
-		"descendant_distance",
+		"distance",
 	)
 
 	for v := range graph.Stream() {
@@ -271,9 +259,7 @@ func batchInsertUpload(ctx context.Context, repositoryID int, inserter *batch.Ba
 			repositoryID,
 			dbutil.CommitBytea(uploads.Commit),
 			uploadMeta.UploadID,
-			uploadMeta.Flags&commitgraph.MaxDistance,
-			(uploadMeta.Flags&commitgraph.FlagAncestorVisible) != 0,
-			(uploadMeta.Flags&commitgraph.FlagOverwritten) != 0,
+			uploadMeta.Distance,
 		); err != nil {
 			return err
 		}
@@ -288,9 +274,7 @@ func batchInsertLinks(ctx context.Context, repositoryID int, inserter *batch.Bat
 		ctx,
 		repositoryID,
 		dbutil.CommitBytea(link.Commit),
-		dbutil.NewCommitByteaOrNil(link.Ancestor),
-		link.AncestorDistance,
-		dbutil.NewCommitByteaOrNil(link.Descendant),
-		link.DescendantDistance,
+		dbutil.CommitBytea(link.AncestorCommit),
+		link.Distance,
 	)
 }
