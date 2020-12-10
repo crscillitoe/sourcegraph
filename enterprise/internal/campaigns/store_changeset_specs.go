@@ -513,13 +513,14 @@ WHERE
 				changeset_spec_tracked_mappings
 			WHERE
 				campaign_spec_id = %s
-		 UNION
+		UNION
 			SELECT
 				MAX(CASE WHEN owner_campaign_id = %s THEN changeset_id ELSE 0 END)
 			FROM
 				changeset_spec_branch_mappings
 			WHERE
 				campaign_spec_id = %s
+			GROUP BY changeset_spec_id, repo_id
  	) AND
  	changesets.campaign_ids ? %s
 `

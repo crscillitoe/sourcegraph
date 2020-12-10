@@ -7,10 +7,12 @@ CREATE VIEW changeset_spec_tracked_mappings AS (
         changeset_specs.repo_id AS repo_id,
         changeset_specs.campaign_spec_id AS campaign_spec_id
     FROM changeset_specs
-    LEFT JOIN changesets ON changesets.repo_id = changeset_specs.repo_id AND changesets.external_id = changeset_specs.spec->>'externalID'
+    LEFT JOIN changesets ON
+        changesets.repo_id = changeset_specs.repo_id AND
+        changesets.external_id = changeset_specs.spec->>'externalID'
     INNER JOIN repo ON changeset_specs.repo_id = repo.id
     WHERE
-        changeset_specs.spec->>'externalID' IS NOT NULL
+        changeset_specs.spec->>'externalID' IS NOT NULL AND
         repo.deleted_at IS NULL
 );
 
