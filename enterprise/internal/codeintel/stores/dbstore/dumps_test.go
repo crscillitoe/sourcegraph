@@ -229,22 +229,15 @@ func TestFindClosestDumpsAlternateCommitGraph(t *testing.T) {
 	expectedVisibleUploads := map[string][]commitgraph.UploadMeta{
 		makeCommit(1): {{UploadID: 1, Flags: 1}},
 		makeCommit(2): {{UploadID: 1, Flags: 0}},
-		makeCommit(4): nil,
-		makeCommit(5): nil,
-		makeCommit(7): nil,
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, normalizeVisibleUploads(visibleUploads), UploadMetaComparer); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
 	t1 := makeCommit(2)
-	t2 := makeCommit(5)
-	t3 := makeCommit(7)
 
 	expectedLinks := map[string]commitgraph.LinkRelationship{
 		makeCommit(3): {Commit: makeCommit(3), Ancestor: &t1, AncestorDistance: 1},
-		makeCommit(6): {Commit: makeCommit(6), Ancestor: &t2, AncestorDistance: 1},
-		makeCommit(8): {Commit: makeCommit(8), Ancestor: &t3, AncestorDistance: 1},
 	}
 	if diff := cmp.Diff(expectedLinks, links); diff != "" {
 		t.Errorf("unexpected visible links (-want +got):\n%s", diff)
