@@ -90,7 +90,12 @@ func (g *Graph) Stream() <-chan Envelope {
 				descendantDistance,
 			)
 
-			if (found1 && ancestorDistance == 0) || (found2 && descendantDistance == 0) {
+			threshold := 1
+			if found1 && found2 {
+				threshold = 2
+			}
+
+			if (found1 && ancestorDistance == 0) || (found2 && descendantDistance == 0) || len(uploads) <= threshold {
 				ch <- Envelope{
 					Uploads: &VisibilityRelationship{
 						Commit:  commit,
@@ -98,6 +103,11 @@ func (g *Graph) Stream() <-chan Envelope {
 					},
 				}
 			} else {
+				// Otherwise, we have more than a pair of uploads. Because we also have a
+				// very cheap way of reconstructing this particular commit's visible uploads
+				// from its ancestors and descendants, we store that relationships which is
+				// much smaller when the number of distinct LSIF roots becomes large.
+
 				ch <- Envelope{
 					Links: &LinkRelationship{
 						Commit:             commit,

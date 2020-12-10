@@ -229,16 +229,13 @@ func TestFindClosestDumpsAlternateCommitGraph(t *testing.T) {
 	expectedVisibleUploads := map[string][]commitgraph.UploadMeta{
 		makeCommit(1): {{UploadID: 1, Flags: 1}},
 		makeCommit(2): {{UploadID: 1, Flags: 0}},
+		makeCommit(3): {{UploadID: 1, Flags: 1}},
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, normalizeVisibleUploads(visibleUploads), UploadMetaComparer); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	t1 := makeCommit(2)
-
-	expectedLinks := map[string]commitgraph.LinkRelationship{
-		makeCommit(3): {Commit: makeCommit(3), Ancestor: &t1, AncestorDistance: 1},
-	}
+	expectedLinks := map[string]commitgraph.LinkRelationship{}
 	if diff := cmp.Diff(expectedLinks, links); diff != "" {
 		t.Errorf("unexpected visible links (-want +got):\n%s", diff)
 	}
@@ -288,21 +285,17 @@ func TestFindClosestDumpsAlternateCommitGraphWithOverwrittenVisibleUploads(t *te
 	visibleUploads, links := commitgraph.NewGraph(graph, toCommitGraphView(uploads)).Gather()
 
 	expectedVisibleUploads := map[string][]commitgraph.UploadMeta{
+		makeCommit(1): {{UploadID: 1, Flags: 1}},
 		makeCommit(2): {{UploadID: 1, Flags: 0}},
+		makeCommit(3): {{UploadID: 1, Flags: 1}},
+		makeCommit(4): {{UploadID: 2, Flags: 1}},
 		makeCommit(5): {{UploadID: 2, Flags: 0}},
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, normalizeVisibleUploads(visibleUploads), UploadMetaComparer); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	c1 := makeCommit(2)
-	c2 := makeCommit(5)
-
-	expectedLinks := map[string]commitgraph.LinkRelationship{
-		makeCommit(1): {Commit: makeCommit(1), Descendant: &c1, DescendantDistance: 1},
-		makeCommit(3): {Commit: makeCommit(3), Ancestor: &c1, AncestorDistance: 1, Descendant: &c2, DescendantDistance: 2},
-		makeCommit(4): {Commit: makeCommit(4), Ancestor: &c1, AncestorDistance: 2, Descendant: &c2, DescendantDistance: 1},
-	}
+	expectedLinks := map[string]commitgraph.LinkRelationship{}
 	if diff := cmp.Diff(expectedLinks, links); diff != "" {
 		t.Errorf("unexpected visible links (-want +got):\n%s", diff)
 	}
@@ -512,8 +505,11 @@ func TestFindClosestDumpsIndexerName(t *testing.T) {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	t1 := makeCommit(4)
+	// Check that commits with more than a pair of visible uploads are
+	// compressed as a link to a unique ancestor and/or descendant in
+	// the git commit graph.
 
+	t1 := makeCommit(4)
 	expectedLinks := map[string]commitgraph.LinkRelationship{
 		makeCommit(5): {Commit: makeCommit(5), Ancestor: &t1, AncestorDistance: 1},
 	}
@@ -618,19 +614,15 @@ func TestFindClosestDumpsFromGraphFragment(t *testing.T) {
 	expectedVisibleUploads := map[string][]commitgraph.UploadMeta{
 		makeCommit(1): {{UploadID: 1, Flags: 0}},
 		makeCommit(2): {{UploadID: 1, Flags: 1}},
+		makeCommit(3): {{UploadID: 1, Flags: 2}},
 		makeCommit(5): {{UploadID: 2, Flags: 0}},
+		makeCommit(6): {{UploadID: 2, Flags: 1}},
 	}
 	if diff := cmp.Diff(expectedVisibleUploads, normalizeVisibleUploads(visibleUploads), UploadMetaComparer); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	t1 := makeCommit(2)
-	t2 := makeCommit(5)
-
-	expectedLinks := map[string]commitgraph.LinkRelationship{
-		makeCommit(3): {Commit: makeCommit(3), Ancestor: &t1, AncestorDistance: 1},
-		makeCommit(6): {Commit: makeCommit(6), Ancestor: &t2, AncestorDistance: 1},
-	}
+	expectedLinks := map[string]commitgraph.LinkRelationship{}
 	if diff := cmp.Diff(expectedLinks, links, UploadMetaComparer); diff != "" {
 		t.Errorf("unexpected visible links (-want +got):\n%s", diff)
 	}
