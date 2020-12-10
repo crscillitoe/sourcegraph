@@ -322,9 +322,14 @@ func BenchmarkCalculateVisibleUploads(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		_, _ = NewGraph(commitGraph, commitGraphView).Gather()
+	uploadsByCommit, links := NewGraph(commitGraph, commitGraphView).Gather()
+
+	var numUploads int
+	for uploads := range uploadsByCommit {
+		numUploads += len(uploads)
 	}
+
+	fmt.Printf("\nNum Uploads: %d\nNum Links:   %d\n\n", numUploads, len(links))
 }
 
 func readBenchmarkCommitGraph() (*gitserver.CommitGraph, error) {
