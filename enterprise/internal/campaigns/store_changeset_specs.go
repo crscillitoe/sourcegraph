@@ -471,7 +471,6 @@ func getRewirerMappingsQuery(opts GetRewirerMappingsOpts) *sqlf.Query {
 		opts.CampaignID,
 		opts.CampaignSpecID,
 		opts.CampaignID,
-		opts.CampaignID,
 	)
 }
 
@@ -492,15 +491,16 @@ UNION ALL
 -- Fetch all changeset specs in the campaign spec that are of type ChangesetSpecDescriptionTypeBranch.
 -- Match the entries to changesets in the target campaign by head ref and repo.
 SELECT
-	changeset_spec_id, CASE WHEN owner_campaign_id = %s	THEN changeset_id ELSE 0 END, repo_id
+	changeset_spec_id, MAX(CASE WHEN owner_campaign_id = %s THEN changeset_id ELSE 0 END), repo_id
 FROM
 	changeset_spec_branch_mappings
 WHERE
 	campaign_spec_id = %s
+GROUP BY changeset_spec_id, repo_id
 
 UNION ALL
 
--- Finally, fetch all changesets that didn't match a changeset spec in the campaign spec and that aren't part of tracked_mappings and branch_mappings. Those are to be closed.
+-- Finally, fetch all changesets that didn't match a changeset spec in the campaign spec and that aren't part of tracked_mappings and branch_mappings. Those are to be closed or detached.
 SELECT 0 as changeset_spec_id, changesets.id as changeset_id, changesets.repo_id as repo_id
 FROM changesets
 INNER JOIN repo ON changesets.repo_id = repo.id
@@ -512,17 +512,14 @@ WHERE
 			FROM
 				changeset_spec_tracked_mappings
 			WHERE
-				changeset_id != 0 AND
 				campaign_spec_id = %s
 		 UNION
 			SELECT
-				changeset_id
+				MAX(CASE WHEN owner_campaign_id = %s THEN changeset_id ELSE 0 END)
 			FROM
 				changeset_spec_branch_mappings
 			WHERE
-				changeset_id != 0 AND
-				owner_campaign_id = %s AND
 				campaign_spec_id = %s
  	) AND
- 	((changesets.campaign_ids ? %s) OR changesets.owned_by_campaign_id = %s)
+ 	changesets.campaign_ids ? %s
 `
