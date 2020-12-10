@@ -78,24 +78,24 @@ func (r *campaignSpecResolver) ChangesetSpecs(ctx context.Context, args *graphql
 }
 
 func (r *campaignSpecResolver) ApplyPreview(ctx context.Context, args *graphqlbackend.ChangesetApplyPreviewConnectionArgs) (graphqlbackend.ChangesetApplyPreviewConnectionResolver, error) {
-	opts := ee.ListChangesetSpecsOpts{}
+	opts := ee.GetRewirerMappingsOpts{}
 	if err := validateFirstParamDefaults(args.First); err != nil {
 		return nil, err
 	}
-	opts.Limit = int(args.First)
+	limitOffset := db.LimitOffset{}
+	limitOffset.Limit = int(args.First)
 	if args.After != nil {
 		id, err := strconv.Atoi(*args.After)
 		if err != nil {
 			return nil, err
 		}
-		opts.Cursor = int64(id)
+		limitOffset.Offset = id
 	}
 
-	// TODO: Pagination.
 	return &changesetApplyPreviewConnectionResolver{
-		store:       r.store,
-		httpFactory: r.httpFactory,
-		// opts:           opts,
+		store:          r.store,
+		httpFactory:    r.httpFactory,
+		opts:           opts,
 		campaignSpecID: r.campaignSpec.ID,
 	}, nil
 }

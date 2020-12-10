@@ -8,6 +8,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend/graphqlutil"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
+	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
 )
 
@@ -22,11 +23,12 @@ type changesetApplyPreviewConnectionResolver struct {
 
 	once     sync.Once
 	mappings ee.RewirerMappings
+	campaign *campaigns.Campaign
 	err      error
 }
 
 func (r *changesetApplyPreviewConnectionResolver) TotalCount(ctx context.Context) (int32, error) {
-	mappings, err := r.compute(ctx)
+	mappings, _, err := r.compute(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -38,7 +40,7 @@ func (r *changesetApplyPreviewConnectionResolver) PageInfo(ctx context.Context) 
 }
 
 func (r *changesetApplyPreviewConnectionResolver) Nodes(ctx context.Context) ([]graphqlbackend.ChangesetApplyPreviewResolver, error) {
-	mappings, err := r.compute(ctx)
+	mappings, campaign, err := r.compute(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -59,16 +61,33 @@ func (r *changesetApplyPreviewConnectionResolver) Nodes(ctx context.Context) ([]
 			httpFactory:       r.httpFactory,
 			mapping:           mapping,
 			preloadedNextSync: scheduledSyncs[mapping.ChangesetID],
+			preloadedCampaign: campaign,
 		})
 	}
 
 	return resolvers, nil
 }
 
-func (r *changesetApplyPreviewConnectionResolver) compute(ctx context.Context) (ee.RewirerMappings, error) {
+func (r *changesetApplyPreviewConnectionResolver) compute(ctx context.Context) (ee.RewirerMappings, *campaigns.Campaign, error) {
 	r.once.Do(func() {
 		opts := r.opts
 		opts.CampaignSpecID = r.campaignSpecID
+
+		svc := ee.NewService(r.store, nil)
+		campaignSpec, err := r.store.GetCampaignSpec(ctx, ee.GetCampaignSpecOpts{ID: r.campaignSpecID})
+		if err != nil {
+			r.err = err
+			return
+		}
+		// Dry-run reconcile the campaign with the new campaign spec.
+		r.campaign, _, err = svc.ReconcileCampaign(ctx, campaignSpec)
+		if err != nil {
+			r.err = err
+			return
+		}
+
+		opts.CampaignID = r.campaign.ID
+
 		r.mappings, r.err = r.store.GetRewirerMappings(ctx, opts)
 		if r.err != nil {
 			return
@@ -76,5 +95,5 @@ func (r *changesetApplyPreviewConnectionResolver) compute(ctx context.Context) (
 		r.err = r.mappings.Hydrate(ctx, r.store)
 	})
 
-	return r.mappings, r.err
+	return r.mappings, r.campaign, r.err
 }

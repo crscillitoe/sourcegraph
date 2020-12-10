@@ -9,6 +9,7 @@ import (
 	"github.com/keegancsmith/sqlf"
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
+	"github.com/sourcegraph/sourcegraph/internal/db"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbutil"
 )
 
@@ -395,6 +396,8 @@ func scanChangesetSpec(c *campaigns.ChangesetSpec, s scanner) error {
 type GetRewirerMappingsOpts struct {
 	CampaignSpecID int64
 	CampaignID     int64
+
+	LimitOffset *db.LimitOffset
 }
 
 // GetRewirerMappings returns RewirerMappings between changeset specs and changesets.
@@ -469,6 +472,7 @@ func getRewirerMappingsQuery(opts GetRewirerMappingsOpts) *sqlf.Query {
 		opts.CampaignSpecID,
 		opts.CampaignID,
 		opts.CampaignID,
+		opts.LimitOffset.SQL(),
 	)
 }
 
@@ -505,24 +509,29 @@ WITH
 			repo.deleted_at IS NULL
 )
 
-SELECT changeset_spec_id, changeset_id, repo_id FROM tracked_mappings
+SELECT mappings.changeset_spec_id, mappings.changeset_id, mappings.repo_id FROM (
+	SELECT changeset_spec_id, changeset_id, repo_id FROM tracked_mappings
 
-UNION ALL
+	UNION ALL
 
-SELECT changeset_spec_id, changeset_id, repo_id FROM branch_mappings
+	SELECT changeset_spec_id, changeset_id, repo_id FROM branch_mappings
 
-UNION ALL
+	UNION ALL
 
--- Finally, fetch all changesets that didn't match a changeset spec in the campaign spec and that aren't part of tracked_mappings and branch_mappings. Those are to be closed.
-SELECT 0 as changeset_spec_id, changesets.id as changeset_id, changesets.repo_id as repo_id
-FROM changesets
-INNER JOIN repo ON changesets.repo_id = repo.id
-WHERE
-	repo.deleted_at IS NULL AND
- 	changesets.id NOT IN (
-		 SELECT changeset_id FROM tracked_mappings WHERE changeset_id != 0
-		 UNION
-		 SELECT changeset_id FROM branch_mappings WHERE changeset_id != 0
- 	) AND
- 	((changesets.campaign_ids ? %s) OR changesets.owned_by_campaign_id = %s)
+	-- Finally, fetch all changesets that didn't match a changeset spec in the campaign spec and that aren't part of tracked_mappings and branch_mappings. Those are to be closed.
+	SELECT 0 AS changeset_spec_id, changesets.id AS changeset_id, changesets.repo_id AS repo_id
+	FROM changesets
+	INNER JOIN repo ON changesets.repo_id = repo.id
+	WHERE
+		repo.deleted_at IS NULL AND
+		changesets.id NOT IN (
+			SELECT changeset_id FROM tracked_mappings WHERE changeset_id != 0
+			UNION
+			SELECT changeset_id FROM branch_mappings WHERE changeset_id != 0
+		) AND
+		((changesets.campaign_ids ? %s) OR changesets.owned_by_campaign_id = %s)
+) AS mappings
+ORDER BY mappings.changeset_spec_id ASC, mappings.changeset_id ASC
+-- LIMIT, OFFSET
+%s
 `

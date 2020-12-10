@@ -18,11 +18,16 @@ type changesetApplyPreviewResolver struct {
 
 	mapping           *ee.RewirerMapping
 	preloadedNextSync time.Time
+	preloadedCampaign *campaigns.Campaign
 	campaignSpecID    int64
 
 	planOnce sync.Once
 	plan     *ee.ReconcilerPlan
 	planErr  error
+
+	campaignOnce sync.Once
+	campaign     *campaigns.Campaign
+	campaignErr  error
 }
 
 var _ graphqlbackend.ChangesetApplyPreviewResolver = &changesetApplyPreviewResolver{}
@@ -64,16 +69,7 @@ func (r *changesetApplyPreviewResolver) Delta(ctx context.Context) (graphqlbacke
 
 func (r *changesetApplyPreviewResolver) computePlan(ctx context.Context) (*ee.ReconcilerPlan, error) {
 	r.planOnce.Do(func() {
-		svc := ee.NewService(r.store, nil)
-
-		campaignSpec, err := r.store.GetCampaignSpec(ctx, ee.GetCampaignSpecOpts{ID: r.campaignSpecID})
-		if err != nil {
-			r.planErr = err
-			return
-		}
-
-		// First dry-run reconcile the campaign with the new campaign spec.
-		campaign, _, err := svc.ReconcileCampaign(ctx, campaignSpec)
+		campaign, err := r.computeCampaign(ctx)
 		if err != nil {
 			r.planErr = err
 			return
@@ -115,6 +111,24 @@ func (r *changesetApplyPreviewResolver) computePlan(ctx context.Context) (*ee.Re
 		r.plan, r.planErr = ee.DetermineReconcilerPlan(previousSpec, currentSpec, changeset)
 	})
 	return r.plan, r.planErr
+}
+
+func (r *changesetApplyPreviewResolver) computeCampaign(ctx context.Context) (*campaigns.Campaign, error) {
+	r.campaignOnce.Do(func() {
+		if r.preloadedCampaign != nil {
+			r.campaign = r.preloadedCampaign
+			return
+		}
+		svc := ee.NewService(r.store, nil)
+		campaignSpec, err := r.store.GetCampaignSpec(ctx, ee.GetCampaignSpecOpts{ID: r.campaignSpecID})
+		if err != nil {
+			r.planErr = err
+			return
+		}
+		// Dry-run reconcile the campaign with the new campaign spec.
+		r.campaign, _, r.campaignErr = svc.ReconcileCampaign(ctx, campaignSpec)
+	})
+	return r.campaign, r.campaignErr
 }
 
 func (r *changesetApplyPreviewResolver) ChangesetSpec(ctx context.Context) (graphqlbackend.ChangesetSpecResolver, error) {
