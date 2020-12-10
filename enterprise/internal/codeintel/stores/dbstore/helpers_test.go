@@ -332,17 +332,10 @@ func getUploadsVisibleAtTip(t *testing.T, db *sql.DB, repositoryID int) []int {
 }
 
 func normalizeVisibleUploads(uploadMetas map[string][]commitgraph.UploadMeta) map[string][]commitgraph.UploadMeta {
-	for commit, uploads := range uploadMetas {
-		var filtered []commitgraph.UploadMeta
-		for _, upload := range uploads {
-			filtered = append(filtered, upload)
-		}
-
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].UploadID-filtered[j].UploadID < 0
+	for _, uploads := range uploadMetas {
+		sort.Slice(uploads, func(i, j int) bool {
+			return uploads[i].UploadID-uploads[j].UploadID < 0
 		})
-
-		uploadMetas[commit] = filtered
 	}
 
 	return uploadMetas
