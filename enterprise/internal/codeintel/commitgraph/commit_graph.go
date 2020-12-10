@@ -73,33 +73,48 @@ func (g *Graph) Stream() <-chan Envelope {
 		for _, commit := range g.commits {
 			ancestorCommit, ancestorDistance, found1 := traverseForCommit(g.graph, g.ancestorUploads, commit)
 			descendantCommit, descendantDistance, found2 := traverseForCommit(g.reverseGraph, g.descendantUploads, commit)
+			if !found1 && !found2 {
+				continue
+			}
+
+			uploads := combineVisibleUploadsForCommit(
+				g.ancestorUploads[ancestorCommit],
+				g.descendantUploads[descendantCommit],
+				ancestorDistance,
+				descendantDistance,
+			)
+			if len(uploads) == 0 {
+				continue
+			}
 
 			if (found1 && ancestorDistance == 0) || (found2 && descendantDistance == 0) {
-				ch <- Envelope{Uploads: &VisibilityRelationship{
-					Commit: commit,
-					Uploads: combineVisibleUploadsForCommit(
-						g.ancestorUploads[ancestorCommit],
-						g.descendantUploads[descendantCommit],
-						ancestorDistance,
-						descendantDistance,
-					),
-				}}
-			} else {
-				var ac, dc *string
-				if found1 {
-					ac = &ancestorCommit
+				ch <- Envelope{
+					Uploads: &VisibilityRelationship{
+						Commit:  commit,
+						Uploads: uploads,
+					},
 				}
-				if found2 {
-					dc = &descendantCommit
-				}
+				continue
+			}
 
-				ch <- Envelope{Links: &LinkRelationship{
+			var ancestorCommitPtr *string
+			if found1 {
+				ancestorCommitPtr = &ancestorCommit
+			}
+
+			var descendantCommitPtr *string
+			if found2 {
+				descendantCommitPtr = &descendantCommit
+			}
+
+			ch <- Envelope{
+				Links: &LinkRelationship{
 					Commit:             commit,
-					Ancestor:           ac,
+					Ancestor:           ancestorCommitPtr,
 					AncestorDistance:   ancestorDistance,
-					Descendant:         dc,
+					Descendant:         descendantCommitPtr,
 					DescendantDistance: descendantDistance,
-				}}
+				},
 			}
 		}
 	}()
@@ -173,7 +188,7 @@ func populateUploadsByTraversal(graph, reverseGraph map[string][]string, order [
 			len(children) <= 1 && // ¬Property 2
 			len(parents) <= 1 && // ¬Property 3
 			(len(parents) == 0 || len(reverseGraph[parents[0]]) == 1) && // ¬Property 4
-			(len(children) == 0 || len(graph[children[0]]) == 1) { // ¬Property 5
+			(len(children) == 0 || len(reverseGraph[children[0]]) == 1) { // ¬Property 5
 			continue
 		}
 
