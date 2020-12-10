@@ -1,6 +1,6 @@
 BEGIN;
 
-ALTER TABLE lsif_indexes ADD COLUMN local_steps jsonb[];
+ALTER TABLE lsif_indexes ADD COLUMN local_steps json;
 
 UPDATE lsif_indexes SET local_steps = '{}';
 
