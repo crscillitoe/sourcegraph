@@ -818,7 +818,7 @@ Referenced by:
  repository_id | integer | not null
  upload_id     | integer | not null
 Indexes:
-    "lsif_uploads_visible_at_tip_repository_id" btree (repository_id)
+    "lsif_uploads_visible_at_tip_repository_id_upload_id" btree (repository_id, upload_id)
 
 ```
 
