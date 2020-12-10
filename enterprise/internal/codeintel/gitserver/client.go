@@ -86,7 +86,7 @@ func (c *Client) CommitGraph(ctx context.Context, repositoryID int, opts CommitG
 		commands = append(commands, opts.Commit)
 	}
 	if opts.Since != nil {
-		commands = append(commands, fmt.Sprintf("--since=%s", opts.Since.Add(-time.Hour*24*365).Format(time.RFC3339)))
+		commands = append(commands, fmt.Sprintf("--since=%s", opts.Since.Format(time.RFC3339)))
 	}
 	if opts.Limit > 0 {
 		commands = append(commands, fmt.Sprintf("-%d", opts.Limit))

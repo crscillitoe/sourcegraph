@@ -65,8 +65,9 @@ func (g *Graph) Stream() <-chan Envelope {
 			if ancestorCommit, ancestorDistance, found := traverseForCommit(g.graph, g.ancestorUploads, commit); found {
 				if ancestorVisibleUploads := g.ancestorUploads[ancestorCommit]; ancestorDistance == 0 || len(ancestorVisibleUploads) == 1 {
 					// We have either a single upload (which is cheap enough to store), or we have
-					// multiple uploads but we were assigned ancestorVisibleUploads. The later case
-					// means that this data is necessary for reconstruction of a descendant commit.
+					// multiple uploads but we were assigned a value in  ancestorVisibleUploads. The
+					// later case means that the visible uploads for this commit is data required to
+					// reconstruct the visible uploads of a descendant commit.
 
 					ch <- Envelope{
 						Uploads: &VisibilityRelationship{
@@ -143,12 +144,7 @@ func reverseGraph(graph map[string][]string) map[string][]string {
 // All such commits have a single, unambiguous path to an ancestor that does store data. These
 // commits have the same visibility (the descendant is just farther away).
 func populateUploadsByTraversal(graph map[string][]string, order []string, commitGraphView *CommitGraphView) map[string]map[string]UploadMeta {
-	reverseGraph := map[string][]string{}
-	for child, parents := range graph {
-		for _, parent := range parents {
-			reverseGraph[parent] = append(reverseGraph[parent], child)
-		}
-	}
+	reverseGraph := reverseGraph(graph)
 
 	uploads := make(map[string]map[string]UploadMeta, len(order))
 	for _, commit := range order {
@@ -192,7 +188,7 @@ func populateUploadsByTraversal(graph map[string][]string, order []string, commi
 // The uploads considered visible for a commit include:
 //
 //   1. the set of uploads defined on that commit, and
-//   2. the set of  uploads visible from the ancestors with the minimum distance
+//   2. the set of uploads visible from the ancestors with the minimum distance
 //      for equivalent root and indexer values.
 //
 // If two ancestors have different uploads visible for the same root and indexer, the one with the
@@ -200,10 +196,10 @@ func populateUploadsByTraversal(graph map[string][]string, order []string, commi
 // child commit define uploads for the same root and indexer pair, the upload defined on the commit
 // will shadow the upload defined on the ancestor.
 func populateUploadsForCommit(uploads map[string]map[string]UploadMeta, ancestors []string, distance uint32, commitGraphView *CommitGraphView, commit string) map[string]UploadMeta {
-	// The capacity chosen here is an underestimate, but seems to perform well in
-	// benchmarks using live user data. We have attempted to make this value more
-	// precise to minimize the number of re-hash operations, but any counting we
-	// do requires auxiliary space and takes additional CPU to traverse the graph.
+	// The capacity chosen here is an underestimate, but seems to perform well in benchmarks using
+	// live user data. We have attempted to make this value more precise to minimize the number of
+	// re-hash operations, but any counting we do requires auxiliary space and takes additional CPU
+	// to traverse the graph.
 	capacity := len(commitGraphView.Meta[commit])
 	for _, ancestor := range ancestors {
 		if temp := len(uploads[ancestor]); temp > capacity {

@@ -14,8 +14,7 @@ type CommitGraphView struct {
 }
 
 // UploadMeta represents the visibility of an LSIF upload from a particular location
-// on a repository's commit graph. The Flags field describes the visibility of the
-// upload from the current viewer's perspective.
+// on a repository's commit graph.
 type UploadMeta struct {
 	UploadID int
 	Distance uint32
