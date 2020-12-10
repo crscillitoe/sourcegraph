@@ -267,25 +267,28 @@ func (s *Store) FindClosestDumpsFromGraphFragment(ctx context.Context, repositor
 
 // candidateVisibleUploadsQuery returns, for every commit, the set of uploads visible
 // by looking at that commit's row in the lsif_nearest_uploads, and the (adjusted) set
-// of uploads visible from that commit's nearest ancestor and descendant according to
-// the lsif_nearest_uploads_links table. NB: A commit should be in exactly one of the
-// tables.
+// of uploads visible from that commit's nearest ancestor according to that commit's
+// row in the lsif_nearest_uploads_links table. NB: A commit should be present in at
+// most one of these tables.
 const candidateVisibleUploadsQuery = `
-	SELECT nu.repository_id, nu.upload_id, nu.commit_bytea, nu.distance
-	FROM lsif_nearest_uploads nu
+SELECT
+	nu.repository_id,
+	nu.upload_id,
+	nu.commit_bytea,
+	nu.distance
+FROM lsif_nearest_uploads nu
 UNION (
-	-- Adjust commit and distance
-	SELECT nu.repository_id, nu.upload_id, ul.commit_bytea, nu.distance + ul.distance
+	SELECT
+		nu.repository_id,
+		nu.upload_id,
+		ul.commit_bytea,
+		nu.distance + ul.distance
 	FROM lsif_nearest_uploads_links ul
-	JOIN lsif_nearest_uploads nu
-		ON nu.repository_id = ul.repository_id
-		AND nu.commit_bytea = ul.ancestor_commit_bytea
+	JOIN lsif_nearest_uploads nu ON nu.repository_id = ul.repository_id AND nu.commit_bytea = ul.ancestor_commit_bytea
 )
 `
 
-// makeVisibleUploadsQuery returns a SQL query that returns the set of visible uploads
-// for a particular commit. This query performs the merging of multiple sets of uploads
-// visible from an ancestor, a descendant, and any uploads defined on the commit itself.
+// makeVisibleUploadsQuery returns a SQL query returning the set of uploads visible from the given commit.
 func makeVisibleUploadsQuery(repositoryID int, commit string) *sqlf.Query {
 	return sqlf.Sprintf(`
 		SELECT

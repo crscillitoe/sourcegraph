@@ -181,9 +181,9 @@ func (s *Store) CalculateVisibleUploads(ctx context.Context, repositoryID int, c
 	)
 
 	// Update the commits not inserted into the table above by adding links to a unique
-	// ancestor and descendant (at most one of each) and a distance in the graph from those
-	// other commits. We use this as a cheap way to reconstruct the full data set, which
-	// is multiplicative in the size of the commit graph AND the number of unique roots.
+	// ancestor and their relative distance in the graph. We use this as a cheap way to
+	// reconstruct the full data set, which is multiplicative in the size of the commit
+	// graph AND the number of unique roots.
 	nearestUploadsLinksInserter := batch.NewBatchInserter(
 		ctx,
 		s.Store.Handle().DB(),

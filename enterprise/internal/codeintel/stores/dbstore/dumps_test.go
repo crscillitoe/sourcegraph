@@ -499,10 +499,6 @@ func TestFindClosestDumpsIndexerName(t *testing.T) {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	// Check that commits with more than a pair of visible uploads are
-	// compressed as a link to a unique ancestor and/or descendant in
-	// the git commit graph.
-
 	expectedLinks := map[string]commitgraph.LinkRelationship{
 		makeCommit(5): {Commit: makeCommit(5), AncestorCommit: makeCommit(4), Distance: 1},
 	}

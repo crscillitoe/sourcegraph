@@ -156,33 +156,6 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 	}
 }
 
-func TestReverseGraph(t *testing.T) {
-	reverseGraph := reverseGraph(map[string][]string{
-		"a": {"b", "c"},
-		"b": {"d"},
-		"c": {"e", "f"},
-		"d": {},
-		"e": {"f"},
-		"f": {"g"},
-	})
-	for _, parents := range reverseGraph {
-		sort.Strings(parents)
-	}
-
-	expectedReverseGraph := map[string][]string{
-		"a": nil,
-		"b": {"a"},
-		"c": {"a"},
-		"d": {"b"},
-		"e": {"c"},
-		"f": {"c", "e"},
-		"g": {"f"},
-	}
-	if diff := cmp.Diff(expectedReverseGraph, reverseGraph); diff != "" {
-		t.Errorf("unexpected reverse graph (-want +got):\n%s", diff)
-	}
-}
-
 func BenchmarkCalculateVisibleUploads(b *testing.B) {
 	commitGraph, err := readBenchmarkCommitGraph()
 	if err != nil {
