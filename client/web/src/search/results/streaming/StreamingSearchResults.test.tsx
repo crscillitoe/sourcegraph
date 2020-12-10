@@ -6,9 +6,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { NEVER, of } from 'rxjs'
 import sinon from 'sinon'
 import { FileMatch } from '../../../../../shared/src/components/FileMatch'
+import { VirtualList } from '../../../../../shared/src/components/VirtualList'
 import { SearchPatternType } from '../../../../../shared/src/graphql-operations'
-import { NOOP_TELEMETRY_SERVICE } from '../../../../../shared/src/telemetry/telemetryService'
 import * as GQL from '../../../../../shared/src/graphql/schema'
+import { NOOP_TELEMETRY_SERVICE } from '../../../../../shared/src/telemetry/telemetryService'
+import { SearchResult } from '../../../components/SearchResult'
+import * as helpers from '../../helpers'
 import { AggregateStreamingSearchResults } from '../../stream'
 import { SearchResultsInfoBar } from '../SearchResultsInfoBar'
 import { VersionContextWarning } from '../VersionContextWarning'
@@ -21,8 +24,6 @@ import {
     REPO_MATCH_RESULT,
     RESULT,
 } from '../../../../../shared/src/util/searchTestHelpers'
-import { VirtualList } from '../../../../../shared/src/components/VirtualList'
-import { SearchResult } from '../../../components/SearchResult'
 
 describe('StreamingSearchResults', () => {
     const history = createBrowserHistory()
@@ -489,5 +490,22 @@ describe('StreamingSearchResults', () => {
         sinon.assert.calledWith(logSpy, 'SearchResultClicked')
 
         element.unmount()
+    })
+
+    it('should start a new search with added params when onSearchAgain event in triggered', () => {
+        const submitSearchMock = jest.spyOn(helpers, 'submitSearch').mockImplementation(() => {})
+        const element = mount(
+            <BrowserRouter>
+                <StreamingSearchResults {...defaultProps} />
+            </BrowserRouter>
+        )
+
+        const progress = element.find(StreamingProgress)
+        act(() => progress.prop('onSearchAgain')(['archived:yes', 'timeout:2m']))
+        element.update()
+
+        expect(helpers.submitSearch).toBeCalledTimes(1)
+        const args = submitSearchMock.mock.calls[0][0]
+        expect(args.query).toBe('r:golang/oauth2 test f:travis archived:yes timeout:2m')
     })
 })

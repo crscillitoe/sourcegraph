@@ -1,5 +1,11 @@
+import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
 import * as H from 'history'
+import FileIcon from 'mdi-react/FileIcon'
+import SearchIcon from 'mdi-react/SearchIcon'
+import SourceRepositoryIcon from 'mdi-react/SourceRepositoryIcon'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Observable } from 'rxjs'
+import { FetchFileParameters } from '../../../../../shared/src/components/CodeExcerpt'
 import { FileMatch } from '../../../../../shared/src/components/FileMatch'
 import { VirtualList } from '../../../../../shared/src/components/VirtualList'
 import { ExtensionsControllerProps } from '../../../../../shared/src/extensions/controller'
@@ -10,12 +16,13 @@ import { VersionContextProps } from '../../../../../shared/src/search/util'
 import { SettingsCascadeProps } from '../../../../../shared/src/settings/settings'
 import { TelemetryProps } from '../../../../../shared/src/telemetry/telemetryService'
 import { ThemeProps } from '../../../../../shared/src/theme'
+import { isDefined } from '../../../../../shared/src/util/types'
 import { useObservable } from '../../../../../shared/src/util/useObservable'
 import { AuthenticatedUser } from '../../../auth'
 import { PageTitle } from '../../../components/PageTitle'
 import { SearchResult } from '../../../components/SearchResult'
 import { VersionContext } from '../../../schema/site.schema'
-import { QueryState } from '../../helpers'
+import { QueryState, submitSearch } from '../../helpers'
 import { LATEST_VERSION } from '../SearchResults'
 import { SearchResultsInfoBar } from '../SearchResultsInfoBar'
 import { SearchResultTypeTabs } from '../SearchResultTypeTabs'
@@ -29,13 +36,6 @@ import {
     SearchStreamingProps,
     resolveVersionContext,
 } from '../..'
-import { FetchFileParameters } from '../../../../../shared/src/components/CodeExcerpt'
-import { Observable } from 'rxjs'
-import SourceRepositoryIcon from 'mdi-react/SourceRepositoryIcon'
-import FileIcon from 'mdi-react/FileIcon'
-import { isDefined } from '../../../../../shared/src/util/types'
-import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
-import SearchIcon from 'mdi-react/SearchIcon'
 
 export interface StreamingSearchResultsProps
     extends SearchStreamingProps,
@@ -180,6 +180,14 @@ export const StreamingSearchResults: React.FunctionComponent<StreamingSearchResu
         )
     }
 
+    const onSearchAgain = useCallback(
+        (additionalFilters: string[]) => {
+            const newQuery = [query, ...additionalFilters].join(' ')
+            submitSearch({ ...props, query: newQuery, source: 'excludedResults' })
+        },
+        [query, props]
+    )
+
     return (
         <div className="test-search-results search-results d-flex flex-column w-100">
             <PageTitle key="page-title" title={query} />
@@ -202,7 +210,7 @@ export const StreamingSearchResults: React.FunctionComponent<StreamingSearchResu
                         onSaveQueryClick={onSaveQueryClick}
                         onDidCreateSavedQuery={onDidCreateSavedQuery}
                         didSave={didSave}
-                        stats={<StreamingProgress progress={results?.progress} />}
+                        stats={<StreamingProgress progress={results?.progress} onSearchAgain={onSearchAgain} />}
                     />
                 </div>
 
