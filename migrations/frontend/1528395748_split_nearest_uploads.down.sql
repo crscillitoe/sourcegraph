@@ -8,4 +8,7 @@ ALTER TABLE lsif_nearest_uploads ALTER COLUMN overwritten SET NOT NULL;
 
 DROP TABLE IF EXISTS lsif_nearest_uploads_links;
 
+DROP INDEX lsif_uploads_visible_at_tip_repository_id_upload_id;
+CREATE INDEX lsif_uploads_visible_at_tip_repository_id ON lsif_uploads_visible_at_tip(repository_id);
+
 COMMIT;
