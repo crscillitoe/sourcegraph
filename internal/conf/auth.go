@@ -1,7 +1,12 @@
+//
+// As per the apache version 2.0 license, this is a notice
+// to let you, the reader, know that I have modified this file
+// from its' original state.
+//
+
 package conf
 
 import (
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/envvar"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
 
@@ -25,11 +30,8 @@ func AuthProviderType(p schema.AuthProviders) string {
 	}
 }
 
-// AuthPublic reports whether the site is public. Because many core features rely on persisted user
-// settings, this leads to a degraded experience for most users. As a result, for self-hosted private
-// usage it is preferable for all users to have accounts. But on sourcegraph.com, allowing users to
-// opt-in to accounts remains worthwhile, despite the degraded UX.
-func AuthPublic() bool { return envvar.SourcegraphDotComMode() }
+// Fuck you sourcegraph, we're public as _shit_
+func AuthPublic() bool { return true }
 
 // AuthAllowSignup reports whether the site allows signup. Currently only the builtin auth provider
 // allows signup. AuthAllowSignup returns true if auth.providers' builtin provider has allowSignup
