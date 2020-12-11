@@ -160,6 +160,8 @@
 // 1528395762_add_col_num_results_trigger_event.up.sql (327B)
 // 1528395763_remove_old_campaign_tables.down.sql (1.433kB)
 // 1528395763_remove_old_campaign_tables.up.sql (90B)
+// 1528395764_split_nearest_uploads.down.sql (596B)
+// 1528395764_split_nearest_uploads.up.sql (649B)
 
 package migrations
 
@@ -3428,6 +3430,46 @@ func _1528395763_remove_old_campaign_tablesUpSql() (*asset, error) {
 	return a, nil
 }
 
+var __1528395764_split_nearest_uploadsDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x94\x90\xd1\x6a\xc3\x20\x14\x86\xef\x7d\x8a\x73\xb9\xc1\xde\x20\xf4\x22\x8d\x6e\x08\x46\x4b\x62\xa0\x77\x62\x97\x53\x90\x89\x06\xb5\x1d\x7b\xfb\xd1\x2d\x65\x0b\x5b\xc7\x72\xed\xf7\x7f\xff\xef\xd9\xb2\x27\x2e\x2b\x42\x6a\xa1\x59\x07\xba\xde\x0a\x06\x3e\xbb\xa3\x09\x68\x13\xe6\x62\x4e\x93\x8f\x76\xcc\x50\x53\x0a\x8d\x12\x43\x2b\xc1\x86\x67\xcc\x25\x26\x73\x76\xd9\x1d\x3c\xc2\x21\x46\x8f\x36\x54\xab\x2c\xf1\x8c\xe9\x35\xb9\x52\x30\x7c\x09\x86\x1d\xad\xf5\x8d\x6c\xcf\xf4\xcf\xea\x0d\x94\x74\xc2\x87\x85\x6d\x03\x47\xeb\x33\xfe\x67\xce\x07\x70\xeb\x5b\x97\x42\xa9\x34\xc8\x41\x88\xb5\xb2\xef\x7b\x96\x1e\x42\x3b\xb5\x9b\x3d\xfc\x11\xd8\x9e\xf7\xba\xff\xd5\x68\xbc\x0b\x2f\xf9\x9a\xe0\x92\xb2\xfd\x27\x77\x7d\x9f\x87\x1a\x5b\x4c\x71\x93\x49\x38\xc5\xec\x4a\x4c\x6f\xc6\x8d\x33\x64\xdc\x58\x91\xa6\x63\x97\xab\xae\x34\x80\x92\x7f\xc1\x77\x0b\xf8\xbe\x22\xa4\x51\x6d\xcb\x75\x45\xde\x03\x00\x00\xff\xff\xa2\x02\x72\xd1\x54\x02\x00\x00")
+
+func _1528395764_split_nearest_uploadsDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395764_split_nearest_uploadsDownSql,
+		"1528395764_split_nearest_uploads.down.sql",
+	)
+}
+
+func _1528395764_split_nearest_uploadsDownSql() (*asset, error) {
+	bytes, err := _1528395764_split_nearest_uploadsDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395764_split_nearest_uploads.down.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x6b, 0xc2, 0xcf, 0x1b, 0xa8, 0x65, 0x4e, 0x0, 0x82, 0x5c, 0x6c, 0x91, 0xe1, 0xcd, 0x8, 0xd6, 0x28, 0xf2, 0x5d, 0x28, 0x26, 0xfb, 0xbd, 0xae, 0x35, 0x13, 0xc, 0x47, 0x3a, 0x3b, 0xa2, 0x88}}
+	return a, nil
+}
+
+var __1528395764_split_nearest_uploadsUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x94\x91\xc1\x6e\xab\x30\x10\x45\xf7\xfe\x8a\x59\x26\x52\xfe\xc0\xab\x84\xf8\x45\x96\xc0\x3c\x81\x91\xb2\xb3\x20\xb8\xd2\xa8\x04\x23\x7b\x9a\x2a\x7f\x5f\x41\x21\xaa\x2b\x94\xb6\x1b\x36\xdc\x33\x73\xee\xf8\x20\x4e\x52\x71\xc6\xf6\xa9\x16\x05\xe8\xfd\x21\x15\xd0\x05\x7c\x31\xbd\xad\xbd\x0d\x64\xde\x86\xce\xd5\x6d\x80\x63\x91\xff\x87\x24\x4f\xab\x4c\x41\xdd\x5f\x6c\x20\xe7\xcd\x0d\x03\x36\x9d\xe5\x7f\xc3\xdd\xcd\xfa\x77\x8f\x44\xb6\xe7\x8c\x25\x85\xd8\x6b\x31\xb3\xf2\x1f\xa8\x5c\x83\x38\xcb\x52\x97\xab\x93\x4c\x87\xfd\x6b\x80\x0d\x03\x00\xf0\x76\x70\x01\xc9\xf9\xbb\xc1\x16\xb0\xa7\x89\x56\x55\x9a\xee\xa6\xff\x17\x77\xbd\x22\x99\xe6\x4e\xb6\x86\xcf\x6f\x1c\x78\x34\xf9\x31\xd9\x62\xa0\x31\x1d\x6d\x61\x5b\xbe\xf8\x4b\x75\x14\xe7\x27\xc6\x26\x72\x8d\xf7\xe5\xea\x59\xd5\xaa\x94\xea\x04\x0d\x79\x6b\x61\x13\x4d\xd9\x45\x05\xb7\x9c\xb1\xe9\xcc\x5f\x54\x96\x49\xf3\x43\x99\x9a\x0c\xe1\x10\xbb\xac\x55\xf8\x0d\x37\x87\xc6\xcb\x2f\x05\xd6\xb1\xef\xd2\x0f\x6e\x34\x4e\xf2\x2c\x93\x9a\xb3\x8f\x00\x00\x00\xff\xff\x57\xf8\xe5\x7a\x89\x02\x00\x00")
+
+func _1528395764_split_nearest_uploadsUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1528395764_split_nearest_uploadsUpSql,
+		"1528395764_split_nearest_uploads.up.sql",
+	)
+}
+
+func _1528395764_split_nearest_uploadsUpSql() (*asset, error) {
+	bytes, err := _1528395764_split_nearest_uploadsUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1528395764_split_nearest_uploads.up.sql", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x9c, 0x7, 0x55, 0x81, 0x6c, 0xb4, 0x19, 0x3d, 0x47, 0x5d, 0x39, 0x19, 0x4e, 0x43, 0xf1, 0x41, 0xb, 0xc4, 0x8b, 0x4e, 0xf0, 0x47, 0xee, 0x68, 0x19, 0x9f, 0x90, 0x52, 0xe3, 0x56, 0x3e, 0x67}}
+	return a, nil
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -3679,6 +3721,8 @@ var _bindata = map[string]func() (*asset, error){
 	"1528395762_add_col_num_results_trigger_event.up.sql":                                    _1528395762_add_col_num_results_trigger_eventUpSql,
 	"1528395763_remove_old_campaign_tables.down.sql":                                         _1528395763_remove_old_campaign_tablesDownSql,
 	"1528395763_remove_old_campaign_tables.up.sql":                                           _1528395763_remove_old_campaign_tablesUpSql,
+	"1528395764_split_nearest_uploads.down.sql":                                              _1528395764_split_nearest_uploadsDownSql,
+	"1528395764_split_nearest_uploads.up.sql":                                                _1528395764_split_nearest_uploadsUpSql,
 }
 
 // AssetDebug is true if the assets were built with the debug flag enabled.
@@ -3885,6 +3929,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 	"1528395762_add_col_num_results_trigger_event.up.sql":                                    {_1528395762_add_col_num_results_trigger_eventUpSql, map[string]*bintree{}},
 	"1528395763_remove_old_campaign_tables.down.sql":                                         {_1528395763_remove_old_campaign_tablesDownSql, map[string]*bintree{}},
 	"1528395763_remove_old_campaign_tables.up.sql":                                           {_1528395763_remove_old_campaign_tablesUpSql, map[string]*bintree{}},
+	"1528395764_split_nearest_uploads.down.sql":                                              {_1528395764_split_nearest_uploadsDownSql, map[string]*bintree{}},
+	"1528395764_split_nearest_uploads.up.sql":                                                {_1528395764_split_nearest_uploadsUpSql, map[string]*bintree{}},
 }}
 
 // RestoreAsset restores an asset under the given directory.

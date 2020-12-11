@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/keegancsmith/sqlf"
 	"github.com/lib/pq"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/commitgraph"
@@ -224,23 +223,46 @@ func insertNearestUploads(t *testing.T, db *sql.DB, repositoryID int, uploads ma
 	for commit, metas := range uploads {
 		for _, meta := range metas {
 			rows = append(rows, sqlf.Sprintf(
-				"(%s, %s, %s, %s, %s, %s)",
+				"(%s, %s, %s, %s)",
 				repositoryID,
 				dbutil.CommitBytea(commit),
 				meta.UploadID,
-				meta.Flags&commitgraph.MaxDistance,
-				(meta.Flags&commitgraph.FlagAncestorVisible) != 0,
-				(meta.Flags&commitgraph.FlagOverwritten) != 0,
+				meta.Distance,
 			))
 		}
 	}
 
 	query := sqlf.Sprintf(
-		`INSERT INTO lsif_nearest_uploads (repository_id, commit_bytea, upload_id, distance, ancestor_visible, overwritten) VALUES %s`,
+		`INSERT INTO lsif_nearest_uploads (repository_id, commit_bytea, upload_id, distance) VALUES %s`,
 		sqlf.Join(rows, ","),
 	)
 	if _, err := db.ExecContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...); err != nil {
 		t.Fatalf("unexpected error while updating commit graph: %s", err)
+	}
+}
+
+func insertLinks(t *testing.T, db *sql.DB, repositoryID int, links map[string]commitgraph.LinkRelationship) {
+	if len(links) == 0 {
+		return
+	}
+
+	var rows []*sqlf.Query
+	for commit, link := range links {
+		rows = append(rows, sqlf.Sprintf(
+			"(%s, %s, %s, %s)",
+			repositoryID,
+			dbutil.CommitBytea(commit),
+			dbutil.CommitBytea(link.AncestorCommit),
+			link.Distance,
+		))
+	}
+
+	query := sqlf.Sprintf(
+		`INSERT INTO lsif_nearest_uploads_links (repository_id, commit_bytea, ancestor_commit_bytea, distance) VALUES %s`,
+		sqlf.Join(rows, ","),
+	)
+	if _, err := db.ExecContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...); err != nil {
+		t.Fatalf("unexpected error while updating links: %s %s", err, query.Query(sqlf.PostgresBindVar))
 	}
 }
 
@@ -252,11 +274,6 @@ func toCommitGraphView(uploads []Upload) *commitgraph.CommitGraphView {
 
 	return commitGraphView
 }
-
-// UploadMetaComparer compares the upload identifier and distances of two upload meta values.
-var UploadMetaComparer = cmp.Comparer(func(x, y commitgraph.UploadMeta) bool {
-	return x.UploadID == y.UploadID && (x.Flags&commitgraph.MaxDistance) == (y.Flags&commitgraph.MaxDistance)
-})
 
 func scanVisibleUploads(rows *sql.Rows, queryErr error) (_ map[string][]commitgraph.UploadMeta, err error) {
 	if queryErr != nil {
@@ -275,24 +292,32 @@ func scanVisibleUploads(rows *sql.Rows, queryErr error) (_ map[string][]commitgr
 
 		uploadMeta[commit] = append(uploadMeta[commit], commitgraph.UploadMeta{
 			UploadID: uploadID,
-			Flags:    distance,
+			Distance: distance,
 		})
 	}
 
 	return uploadMeta, nil
 }
 
-func getVisibleUploads(t *testing.T, db *sql.DB, repositoryID int) map[string][]commitgraph.UploadMeta {
-	query := sqlf.Sprintf(
-		`SELECT encode(commit_bytea, 'hex'), upload_id, distance FROM lsif_nearest_uploads WHERE repository_id = %s AND NOT overwritten ORDER BY upload_id`,
-		repositoryID,
-	)
-	uploads, err := scanVisibleUploads(db.QueryContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...))
-	if err != nil {
-		t.Fatalf("unexpected error getting visible uploads: %s", err)
+func getVisibleUploads(t *testing.T, db *sql.DB, repositoryID int, commits []string) map[string][]int {
+	idsByCommit := map[string][]int{}
+	for _, commit := range commits {
+		query := makeVisibleUploadsQuery(repositoryID, commit)
+
+		uploadIDs, err := basestore.ScanInts(db.QueryContext(
+			context.Background(),
+			query.Query(sqlf.PostgresBindVar),
+			query.Args()...,
+		))
+		if err != nil {
+			t.Fatalf("unexpected error getting visible upload IDs: %s", err)
+		}
+		sort.Ints(uploadIDs)
+
+		idsByCommit[commit] = uploadIDs
 	}
 
-	return uploads
+	return idsByCommit
 }
 
 func getUploadsVisibleAtTip(t *testing.T, db *sql.DB, repositoryID int) []int {
@@ -310,19 +335,10 @@ func getUploadsVisibleAtTip(t *testing.T, db *sql.DB, repositoryID int) []int {
 }
 
 func normalizeVisibleUploads(uploadMetas map[string][]commitgraph.UploadMeta) map[string][]commitgraph.UploadMeta {
-	for commit, uploads := range uploadMetas {
-		var filtered []commitgraph.UploadMeta
-		for _, upload := range uploads {
-			if (upload.Flags & commitgraph.FlagOverwritten) == 0 {
-				filtered = append(filtered, upload)
-			}
-		}
-
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].UploadID-filtered[j].UploadID < 0
+	for _, uploads := range uploadMetas {
+		sort.Slice(uploads, func(i, j int) bool {
+			return uploads[i].UploadID-uploads[j].UploadID < 0
 		})
-
-		uploadMetas[commit] = filtered
 	}
 
 	return uploadMetas
