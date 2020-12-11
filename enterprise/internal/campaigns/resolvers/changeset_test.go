@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/resolvers/apitest"
 	"github.com/sourcegraph/sourcegraph/internal/api"
@@ -17,6 +17,8 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbtesting"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
+	"github.com/sourcegraph/sourcegraph/internal/timeutil"
 )
 
 func TestChangesetResolver(t *testing.T) {
@@ -29,8 +31,8 @@ func TestChangesetResolver(t *testing.T) {
 
 	userID := insertTestUser(t, dbconn.Global, "campaign-resolver", true)
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	clock := func() time.Time { return now.UTC().Truncate(time.Microsecond) }
+	now := timeutil.Now()
+	clock := func() time.Time { return now }
 	store := ee.NewStoreWithClock(dbconn.Global, clock)
 	rstore := repos.NewDBStore(dbconn.Global, sql.TxOptions{})
 
@@ -172,7 +174,7 @@ func TestChangesetResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Associate the changeset with a campaign, so it's considered in syncer logic.
-	addChangeset(t, ctx, store, campaign, syncedGitHubChangeset.ID)
+	addChangeset(t, ctx, store, syncedGitHubChangeset, campaign.ID)
 
 	s, err := graphqlbackend.NewSchema(&Resolver{store: store}, nil, nil, nil)
 	if err != nil {
@@ -191,7 +193,7 @@ func TestChangesetResolver(t *testing.T) {
 				Typename:   "ExternalChangeset",
 				Title:      unpublishedSpec.Spec.Title,
 				Body:       unpublishedSpec.Spec.Body,
-				Repository: apitest.Repository{Name: repo.Name},
+				Repository: apitest.Repository{Name: string(repo.Name)},
 				// Not scheduled for sync, because it's not published.
 				NextSyncAt: "",
 				Labels:     []apitest.Label{},
@@ -211,7 +213,7 @@ func TestChangesetResolver(t *testing.T) {
 				Typename:   "ExternalChangeset",
 				Title:      erroredSpec.Spec.Title,
 				Body:       erroredSpec.Spec.Body,
-				Repository: apitest.Repository{Name: repo.Name},
+				Repository: apitest.Repository{Name: string(repo.Name)},
 				// Not scheduled for sync, because it's not published.
 				NextSyncAt: "",
 				Labels:     []apitest.Label{},
@@ -237,7 +239,7 @@ func TestChangesetResolver(t *testing.T) {
 				CheckState:    "PENDING",
 				ReviewState:   "CHANGES_REQUESTED",
 				NextSyncAt:    marshalDateTime(t, now.Add(8*time.Hour)),
-				Repository:    apitest.Repository{Name: repo.Name},
+				Repository:    apitest.Repository{Name: string(repo.Name)},
 				ExternalURL: apitest.ExternalURL{
 					URL:         "https://github.com/sourcegraph/sourcegraph/pull/12345",
 					ServiceType: "github",
@@ -263,7 +265,7 @@ func TestChangesetResolver(t *testing.T) {
 			want: apitest.Changeset{
 				Typename:         "ExternalChangeset",
 				ExternalID:       "9876",
-				Repository:       apitest.Repository{Name: repo.Name},
+				Repository:       apitest.Repository{Name: string(repo.Name)},
 				Labels:           []apitest.Label{},
 				PublicationState: string(campaigns.ChangesetPublicationStatePublished),
 				ReconcilerState:  string(campaigns.ReconcilerStateQueued),

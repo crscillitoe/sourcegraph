@@ -7,7 +7,7 @@ import (
 
 	"github.com/inconshreveable/log15"
 	"github.com/pkg/errors"
-	"github.com/sourcegraph/sourcegraph/enterprise/cmd/frontend/internal/codeintel/autoindex/inference"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/autoindex/inference"
 	store "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"golang.org/x/time/rate"
@@ -91,12 +91,12 @@ func (u *IndexabilityUpdater) queueRepository(ctx context.Context, repoUsageStat
 		return err
 	}
 
-	commit, err := u.gitserverClient.Head(ctx, u.dbStore, repoUsageStatistics.RepositoryID)
+	commit, err := u.gitserverClient.Head(ctx, repoUsageStatistics.RepositoryID)
 	if err != nil {
 		return errors.Wrap(err, "gitserver.Head")
 	}
 
-	paths, err := u.gitserverClient.ListFiles(ctx, u.dbStore, repoUsageStatistics.RepositoryID, commit, inference.Patterns)
+	paths, err := u.gitserverClient.ListFiles(ctx, repoUsageStatistics.RepositoryID, commit, inference.Patterns)
 	if err != nil {
 		return errors.Wrap(err, "gitserver.ListFiles")
 	}

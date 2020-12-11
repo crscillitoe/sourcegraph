@@ -6,16 +6,20 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	cmpgn "github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/bitbucketserver"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/gitlab"
+	"github.com/sourcegraph/sourcegraph/internal/timeutil"
 )
 
 func TestComputeGithubCheckState(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	t.Parallel()
+
+	now := timeutil.Now()
 	commitEvent := func(minutesSinceSync int, context, state string) *cmpgn.ChangesetEvent {
 		commit := &github.CommitStatus{
 			Context:    context,
@@ -161,7 +165,9 @@ func TestComputeGithubCheckState(t *testing.T) {
 }
 
 func TestComputeBitbucketBuildStatus(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	t.Parallel()
+
+	now := timeutil.Now()
 	sha := "abcdef"
 	statusEvent := func(minutesSinceSync int, key, state string) *cmpgn.ChangesetEvent {
 		commit := &bitbucketserver.CommitStatus{
@@ -272,6 +278,8 @@ func TestComputeBitbucketBuildStatus(t *testing.T) {
 }
 
 func TestComputeGitLabCheckState(t *testing.T) {
+	t.Parallel()
+
 	t.Run("no events", func(t *testing.T) {
 		for name, tc := range map[string]struct {
 			mr   *gitlab.MergeRequest
@@ -400,7 +408,9 @@ func TestComputeGitLabCheckState(t *testing.T) {
 }
 
 func TestComputeReviewState(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	t.Parallel()
+
+	now := timeutil.Now()
 	daysAgo := func(days int) time.Time { return now.AddDate(0, 0, -days) }
 
 	tests := []struct {
@@ -545,7 +555,9 @@ func TestComputeReviewState(t *testing.T) {
 }
 
 func TestComputeExternalState(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	t.Parallel()
+
+	now := timeutil.Now()
 	daysAgo := func(days int) time.Time { return now.AddDate(0, 0, -days) }
 
 	tests := []struct {
@@ -723,6 +735,8 @@ func TestComputeExternalState(t *testing.T) {
 }
 
 func TestComputeLabels(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	labelEvent := func(name string, kind cmpgn.ChangesetEventKind, when time.Time) *cmpgn.ChangesetEvent {
 		removed := kind == cmpgn.ChangesetEventKindGitHubUnlabeled

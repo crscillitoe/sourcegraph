@@ -1,11 +1,14 @@
 package gitserver
 
 import (
+	"fmt"
+
 	"github.com/sourcegraph/sourcegraph/internal/metrics"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
 type operations struct {
+	commitDate        *observation.Operation
 	commitGraph       *observation.Operation
 	directoryChildren *observation.Operation
 	fileExists        *observation.Operation
@@ -24,13 +27,14 @@ func makeOperations(observationContext *observation.Context) *operations {
 
 	op := func(name string) *observation.Operation {
 		return observationContext.Operation(observation.Op{
-			Name:         "codeintel.gitserver.%s",
+			Name:         fmt.Sprintf("codeintel.gitserver.%s", name),
 			MetricLabels: []string{name},
 			Metrics:      metrics,
 		})
 	}
 
 	return &operations{
+		commitDate:        op("CommitDate"),
 		commitGraph:       op("CommitGraph"),
 		directoryChildren: op("DirectoryChildren"),
 		fileExists:        op("FileExists"),

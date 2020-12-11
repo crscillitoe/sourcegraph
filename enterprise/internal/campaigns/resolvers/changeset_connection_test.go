@@ -10,7 +10,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/resolvers/apitest"
 	ct "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 )
 
 func TestChangesetConnectionResolver(t *testing.T) {
@@ -28,7 +28,7 @@ func TestChangesetConnectionResolver(t *testing.T) {
 	ctx := backend.WithAuthzBypass(context.Background())
 	dbtesting.SetupGlobalTestDB(t)
 
-	userID := insertTestUser(t, dbconn.Global, "changeset-connection-resolver", true)
+	userID := insertTestUser(t, dbconn.Global, "changeset-connection-resolver", false)
 
 	store := ee.NewStore(dbconn.Global)
 	rstore := repos.NewDBStore(dbconn.Global, sql.TxOptions{})
@@ -38,7 +38,7 @@ func TestChangesetConnectionResolver(t *testing.T) {
 	if err := rstore.InsertRepos(ctx, repo, inaccessibleRepo); err != nil {
 		t.Fatal(err)
 	}
-	ct.AuthzFilterRepos(t, inaccessibleRepo.ID)
+	ct.MockRepoPermissions(t, userID, repo.ID)
 
 	spec := &campaigns.CampaignSpec{
 		NamespaceUserID: userID,
@@ -104,10 +104,10 @@ func TestChangesetConnectionResolver(t *testing.T) {
 		campaign:            campaign.ID,
 	})
 
-	addChangeset(t, ctx, store, campaign, changeset1.ID)
-	addChangeset(t, ctx, store, campaign, changeset2.ID)
-	addChangeset(t, ctx, store, campaign, changeset3.ID)
-	addChangeset(t, ctx, store, campaign, changeset4.ID)
+	addChangeset(t, ctx, store, changeset1, campaign.ID)
+	addChangeset(t, ctx, store, changeset2, campaign.ID)
+	addChangeset(t, ctx, store, changeset3, campaign.ID)
+	addChangeset(t, ctx, store, changeset4, campaign.ID)
 
 	s, err := graphqlbackend.NewSchema(&Resolver{store: store}, nil, nil, nil)
 	if err != nil {
@@ -119,17 +119,17 @@ func TestChangesetConnectionResolver(t *testing.T) {
 		{
 			Typename:   "ExternalChangeset",
 			ID:         string(marshalChangesetID(changeset1.ID)),
-			Repository: apitest.Repository{Name: repo.Name},
+			Repository: apitest.Repository{Name: string(repo.Name)},
 		},
 		{
 			Typename:   "ExternalChangeset",
 			ID:         string(marshalChangesetID(changeset2.ID)),
-			Repository: apitest.Repository{Name: repo.Name},
+			Repository: apitest.Repository{Name: string(repo.Name)},
 		},
 		{
 			Typename:   "ExternalChangeset",
 			ID:         string(marshalChangesetID(changeset3.ID)),
-			Repository: apitest.Repository{Name: repo.Name},
+			Repository: apitest.Repository{Name: string(repo.Name)},
 		},
 		{
 			Typename: "HiddenExternalChangeset",

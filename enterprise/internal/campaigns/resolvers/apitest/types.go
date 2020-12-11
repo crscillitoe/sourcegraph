@@ -203,13 +203,39 @@ type CampaignSpec struct {
 
 	AppliesToCampaign Campaign
 
+	ViewerCampaignsCodeHosts CampaignsCodeHostsConnection
+	// Alias for the above.
+	AllCodeHosts CampaignsCodeHostsConnection
+	// Alias for the above.
+	OnlyWithoutCredential CampaignsCodeHostsConnection
+
 	CreatedAt graphqlbackend.DateTime
 	ExpiresAt *graphqlbackend.DateTime
+
+	SupersedingCampaignSpec *CampaignSpec
+}
+
+// ChangesetSpecDelta is the delta between two ChangesetSpecs describing the same Changeset.
+type ChangesetSpecDelta struct {
+	TitleChanged         bool
+	BodyChanged          bool
+	Undraft              bool
+	BaseRefChanged       bool
+	DiffChanged          bool
+	CommitMessageChanged bool
+	AuthorNameChanged    bool
+	AuthorEmailChanged   bool
 }
 
 type ChangesetSpec struct {
 	Typename string `json:"__typename"`
 	ID       string
+
+	Operations []campaigns.ReconcilerOperation
+	Delta      ChangesetSpecDelta
+	Changeset  struct {
+		ID string
+	}
 
 	Description ChangesetSpecDescription
 

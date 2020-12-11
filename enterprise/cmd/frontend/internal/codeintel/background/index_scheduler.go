@@ -6,8 +6,8 @@ import (
 
 	"github.com/inconshreveable/log15"
 	"github.com/pkg/errors"
-	"github.com/sourcegraph/sourcegraph/enterprise/cmd/frontend/internal/codeintel/autoindex/config"
-	"github.com/sourcegraph/sourcegraph/enterprise/cmd/frontend/internal/codeintel/autoindex/inference"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/autoindex/config"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/autoindex/inference"
 	store "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"github.com/sourcegraph/sourcegraph/internal/vcs"
@@ -90,7 +90,7 @@ func (s *IndexScheduler) HandleError(err error) {
 }
 
 func (s *IndexScheduler) queueIndex(ctx context.Context, repositoryID int) (err error) {
-	commit, err := s.gitserverClient.Head(ctx, s.dbStore, repositoryID)
+	commit, err := s.gitserverClient.Head(ctx, repositoryID)
 	if err != nil {
 		return errors.Wrap(err, "gitserver.Head")
 	}
@@ -180,7 +180,7 @@ func (s *IndexScheduler) getIndexJobsFromConfigurationInDatabase(ctx context.Con
 		// We failed here, but do not try to fall back on another method as having
 		// an explicit config in the database should always take precedence, even
 		// if it's broken.
-		log15.Warn("Failed to unmarshal index configuration", "repository_id", repositoryID)
+		log15.Warn("Failed to unmarshal index configuration", "repository_id", repositoryID, "error", err)
 		return nil, true, nil
 	}
 
@@ -188,7 +188,7 @@ func (s *IndexScheduler) getIndexJobsFromConfigurationInDatabase(ctx context.Con
 }
 
 func (s *IndexScheduler) getIndexJobsFromConfigurationInRepository(ctx context.Context, repositoryID int, commit string) ([]store.Index, bool, error) {
-	isConfigured, err := s.gitserverClient.FileExists(ctx, s.dbStore, repositoryID, commit, "sourcegraph.yaml")
+	isConfigured, err := s.gitserverClient.FileExists(ctx, repositoryID, commit, "sourcegraph.yaml")
 	if err != nil {
 		return nil, false, errors.Wrap(err, "gitserver.FileExists")
 	}
@@ -196,7 +196,7 @@ func (s *IndexScheduler) getIndexJobsFromConfigurationInRepository(ctx context.C
 		return nil, false, nil
 	}
 
-	content, err := s.gitserverClient.RawContents(ctx, s.dbStore, repositoryID, commit, "sourcegraph.yaml")
+	content, err := s.gitserverClient.RawContents(ctx, repositoryID, commit, "sourcegraph.yaml")
 	if err != nil {
 		return nil, false, errors.Wrap(err, "gitserver.RawContents")
 	}
@@ -206,7 +206,7 @@ func (s *IndexScheduler) getIndexJobsFromConfigurationInRepository(ctx context.C
 		// We failed here, but do not try to fall back on another method as having
 		// an explicit config in the repository should always take precedence over
 		// an auto-inferred configuration, even if it's broken.
-		log15.Warn("Failed to unmarshal index configuration", "repository_id", repositoryID)
+		log15.Warn("Failed to unmarshal index configuration", "repository_id", repositoryID, "error", err)
 		return nil, true, nil
 	}
 
@@ -214,7 +214,7 @@ func (s *IndexScheduler) getIndexJobsFromConfigurationInRepository(ctx context.C
 }
 
 func (s *IndexScheduler) inferIndexJobsFromRepositoryStructure(ctx context.Context, repositoryID int, commit string) (indexes []store.Index, _ bool, _ error) {
-	paths, err := s.gitserverClient.ListFiles(ctx, s.dbStore, repositoryID, commit, inference.Patterns)
+	paths, err := s.gitserverClient.ListFiles(ctx, repositoryID, commit, inference.Patterns)
 	if err != nil {
 		return nil, false, errors.Wrap(err, "gitserver.ListFiles")
 	}

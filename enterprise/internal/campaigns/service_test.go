@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	ct "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/testing"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/api"
@@ -22,12 +21,10 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/repoupdater"
+	"github.com/sourcegraph/sourcegraph/internal/timeutil"
 )
-
-func init() {
-	dbtesting.DBNameSuffix = "campaignsenterpriserdb"
-}
 
 func TestServicePermissionLevels(t *testing.T) {
 	if testing.Short() {
@@ -40,20 +37,9 @@ func TestServicePermissionLevels(t *testing.T) {
 	store := NewStore(dbconn.Global)
 	svc := NewService(store, nil)
 
-	admin := createTestUser(ctx, t)
-	if !admin.SiteAdmin {
-		t.Fatalf("admin is not site admin")
-	}
-
-	user := createTestUser(ctx, t)
-	if user.SiteAdmin {
-		t.Fatalf("user cannot be site admin")
-	}
-
-	otherUser := createTestUser(ctx, t)
-	if otherUser.SiteAdmin {
-		t.Fatalf("user cannot be site admin")
-	}
+	admin := createTestUser(t, true)
+	user := createTestUser(t, false)
+	otherUser := createTestUser(t, false)
 
 	rs, _ := ct.CreateTestRepos(t, ctx, dbconn.Global, 1)
 
@@ -70,11 +56,6 @@ func TestServicePermissionLevels(t *testing.T) {
 
 		changeset := testChangeset(rs[0].ID, campaign.ID, campaigns.ChangesetExternalStateOpen)
 		if err := s.CreateChangeset(ctx, changeset); err != nil {
-			t.Fatal(err)
-		}
-
-		campaign.ChangesetIDs = append(campaign.ChangesetIDs, changeset.ID)
-		if err := s.UpdateCampaign(ctx, campaign); err != nil {
 			t.Fatal(err)
 		}
 
@@ -185,17 +166,10 @@ func TestService(t *testing.T) {
 	ctx := backend.WithAuthzBypass(context.Background())
 	dbtesting.SetupGlobalTestDB(t)
 
-	admin := createTestUser(ctx, t)
-	if !admin.SiteAdmin {
-		t.Fatal("admin is not a site-admin")
-	}
+	admin := createTestUser(t, true)
+	user := createTestUser(t, false)
 
-	user := createTestUser(ctx, t)
-	if user.SiteAdmin {
-		t.Fatal("user is admin, want non-admin")
-	}
-
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := timeutil.Now()
 	clock := func() time.Time { return now }
 
 	store := NewStoreWithClock(dbconn.Global, clock)
@@ -317,11 +291,6 @@ func TestService(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		campaign.ChangesetIDs = []int64{changeset.ID}
-		if err := store.UpdateCampaign(ctx, campaign); err != nil {
-			t.Fatal(err)
-		}
-
 		called := false
 		repoupdater.MockEnqueueChangesetSync = func(ctx context.Context, ids []int64) error {
 			if len(ids) != 1 && ids[0] != changeset.ID {
@@ -340,12 +309,12 @@ func TestService(t *testing.T) {
 			t.Fatal("MockEnqueueChangesetSync not called")
 		}
 
-		// Repo filtered out by authzFilter
-		ct.AuthzFilterRepos(t, rs[0].ID)
+		// rs[0] is filtered out
+		ct.MockRepoPermissions(t, user.ID, rs[1].ID, rs[2].ID, rs[3].ID)
 
 		// should result in a not found error
 		if err := svc.EnqueueChangesetSync(ctx, changeset.ID); !errcode.IsNotFound(err) {
-			t.Fatalf("expected not-found error but got %s", err)
+			t.Fatalf("expected not-found error but got %v", err)
 		}
 	})
 
@@ -362,6 +331,7 @@ func TestService(t *testing.T) {
 		}
 
 		adminCtx := actor.WithActor(context.Background(), actor.FromUser(admin.ID))
+		userCtx := actor.WithActor(context.Background(), actor.FromUser(user.ID))
 
 		t.Run("success", func(t *testing.T) {
 			opts := CreateCampaignSpecOpts{
@@ -430,16 +400,15 @@ func TestService(t *testing.T) {
 		})
 
 		t.Run("missing repository permissions", func(t *testing.T) {
-			// Single repository filtered out by authzFilter
-			ct.AuthzFilterRepos(t, changesetSpecs[0].RepoID)
+			ct.MockRepoPermissions(t, user.ID)
 
 			opts := CreateCampaignSpecOpts{
-				NamespaceUserID:      admin.ID,
+				NamespaceUserID:      user.ID,
 				RawSpec:              ct.TestRawCampaignSpec,
 				ChangesetSpecRandIDs: changesetSpecRandIDs,
 			}
 
-			if _, err := svc.CreateCampaignSpec(adminCtx, opts); !errcode.IsNotFound(err) {
+			if _, err := svc.CreateCampaignSpec(userCtx, opts); !errcode.IsNotFound(err) {
 				t.Fatalf("expected not-found error but got %s", err)
 			}
 		})
@@ -581,12 +550,11 @@ func TestService(t *testing.T) {
 		})
 
 		t.Run("missing repository permissions", func(t *testing.T) {
-			// Single repository filtered out by authzFilter
-			ct.AuthzFilterRepos(t, repo.ID)
+			ct.MockRepoPermissions(t, user.ID, rs[1].ID, rs[2].ID, rs[3].ID)
 
 			_, err := svc.CreateChangesetSpec(ctx, rawSpec, admin.ID)
 			if !errcode.IsNotFound(err) {
-				t.Fatalf("expected not-found error but got %s", err)
+				t.Fatalf("expected not-found error but got %v", err)
 			}
 		})
 	})
@@ -643,7 +611,7 @@ func TestService(t *testing.T) {
 		t.Run("new user namespace", func(t *testing.T) {
 			campaign := createCampaign(t, "old-name", admin.ID, admin.ID, 0)
 
-			user2 := createTestUser(ctx, t)
+			user2 := createTestUser(t, false)
 
 			opts := MoveCampaignOpts{CampaignID: campaign.ID, NewNamespaceUserID: user2.ID}
 			moved, err := svc.MoveCampaign(ctx, opts)
@@ -663,7 +631,7 @@ func TestService(t *testing.T) {
 		t.Run("new user namespace but current user is not admin", func(t *testing.T) {
 			campaign := createCampaign(t, "old-name", user.ID, user.ID, 0)
 
-			user2 := createTestUser(ctx, t)
+			user2 := createTestUser(t, false)
 
 			opts := MoveCampaignOpts{CampaignID: campaign.ID, NewNamespaceUserID: user2.ID}
 
@@ -718,7 +686,7 @@ func TestService(t *testing.T) {
 	t.Run("GetCampaignMatchingCampaignSpec", func(t *testing.T) {
 		campaignSpec := createCampaignSpec(t, ctx, store, "matching-campaign-spec", admin.ID)
 
-		haveCampaign, err := svc.GetCampaignMatchingCampaignSpec(ctx, store, campaignSpec)
+		haveCampaign, err := svc.GetCampaignMatchingCampaignSpec(ctx, campaignSpec)
 		if err != nil {
 			t.Fatalf("unexpected error: %s\n", err)
 		}
@@ -740,7 +708,7 @@ func TestService(t *testing.T) {
 			t.Fatalf("failed to create campaign: %s\n", err)
 		}
 
-		haveCampaign, err = svc.GetCampaignMatchingCampaignSpec(ctx, store, campaignSpec)
+		haveCampaign, err = svc.GetCampaignMatchingCampaignSpec(ctx, campaignSpec)
 		if err != nil {
 			t.Fatalf("unexpected error: %s\n", err)
 		}
@@ -751,6 +719,38 @@ func TestService(t *testing.T) {
 		if diff := cmp.Diff(matchingCampaign, haveCampaign); diff != "" {
 			t.Fatalf("wrong campaign was matched (-want +got):\n%s", diff)
 		}
+	})
+
+	t.Run("GetNewestCampaignSpec", func(t *testing.T) {
+		older := createCampaignSpec(t, ctx, store, "superseding", user.ID)
+		newer := createCampaignSpec(t, ctx, store, "superseding", user.ID)
+
+		for name, in := range map[string]*campaigns.CampaignSpec{
+			"older": older,
+			"newer": newer,
+		} {
+			t.Run(name, func(t *testing.T) {
+				have, err := svc.GetNewestCampaignSpec(ctx, store, in, user.ID)
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+
+				if diff := cmp.Diff(newer, have); diff != "" {
+					t.Errorf("unexpected newer campaign spec (-want +have):\n%s", diff)
+				}
+			})
+		}
+
+		t.Run("different user", func(t *testing.T) {
+			have, err := svc.GetNewestCampaignSpec(ctx, store, older, admin.ID)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			if have != nil {
+				t.Errorf("unexpected non-nil campaign spec: %+v", have)
+			}
+		})
 	})
 
 	t.Run("FetchUsernameForBitbucketServerToken", func(t *testing.T) {
@@ -782,34 +782,6 @@ func TestService(t *testing.T) {
 		}
 	})
 }
-
-var testUser = db.NewUser{
-	Email:                 "thorsten@sourcegraph.com",
-	Username:              "thorsten",
-	DisplayName:           "thorsten",
-	Password:              "1234",
-	EmailVerificationCode: "foobar",
-}
-
-var createTestUser = func() func(context.Context, *testing.T) *types.User {
-	count := 0
-
-	return func(ctx context.Context, t *testing.T) *types.User {
-		t.Helper()
-
-		u := testUser
-		u.Username = fmt.Sprintf("%s-%d", u.Username, count)
-
-		user, err := db.Users.Create(ctx, u)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		count += 1
-
-		return user
-	}
-}()
 
 func testCampaign(user int32, spec *campaigns.CampaignSpec) *campaigns.Campaign {
 	c := &campaigns.Campaign{

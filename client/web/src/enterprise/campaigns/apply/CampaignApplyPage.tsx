@@ -1,6 +1,8 @@
 import * as H from 'history'
 import React, { useEffect, useMemo } from 'react'
 import { useObservable } from '../../../../../shared/src/util/useObservable'
+import { delay, distinctUntilChanged, repeatWhen } from 'rxjs/operators'
+import { isEqual } from 'lodash'
 import { PageTitle } from '../../../components/PageTitle'
 import {
     fetchCampaignSpecById as _fetchCampaignSpecById,
@@ -17,11 +19,15 @@ import { HeroPage } from '../../../components/HeroPage'
 import { CampaignDescription } from '../detail/CampaignDescription'
 import { CampaignSpecInfoByline } from './CampaignSpecInfoByline'
 import { TelemetryProps } from '../../../../../shared/src/telemetry/telemetryService'
+import { AuthenticatedUser } from '../../../auth'
+import { CampaignSpecMissingCredentialsAlert } from './CampaignSpecMissingCredentialsAlert'
+import { SupersedingCampaignSpecAlert } from '../detail/SupersedingCampaignSpecAlert'
 
 export interface CampaignApplyPageProps extends ThemeProps, TelemetryProps {
     specID: string
     history: H.History
     location: H.Location
+    authenticatedUser: Pick<AuthenticatedUser, 'url'>
 
     /** Used for testing. */
     fetchCampaignSpecById?: typeof _fetchCampaignSpecById
@@ -37,6 +43,7 @@ export const CampaignApplyPage: React.FunctionComponent<CampaignApplyPageProps> 
     specID,
     history,
     location,
+    authenticatedUser,
     isLightTheme,
     telemetryService,
     fetchCampaignSpecById = _fetchCampaignSpecById,
@@ -44,7 +51,16 @@ export const CampaignApplyPage: React.FunctionComponent<CampaignApplyPageProps> 
     queryChangesetSpecFileDiffs,
     expandChangesetDescriptions,
 }) => {
-    const spec = useObservable(useMemo(() => fetchCampaignSpecById(specID), [specID, fetchCampaignSpecById]))
+    const spec = useObservable(
+        useMemo(
+            () =>
+                fetchCampaignSpecById(specID).pipe(
+                    repeatWhen(notifier => notifier.pipe(delay(5000))),
+                    distinctUntilChanged(isEqual)
+                ),
+            [specID, fetchCampaignSpecById]
+        )
+    )
 
     useEffect(() => {
         telemetryService.logViewEvent('CampaignApplyPage')
@@ -70,6 +86,11 @@ export const CampaignApplyPage: React.FunctionComponent<CampaignApplyPageProps> 
                 className="test-campaign-apply-page"
             />
             <CampaignSpecInfoByline createdAt={spec.createdAt} creator={spec.creator} className="mb-3" />
+            <CampaignSpecMissingCredentialsAlert
+                authenticatedUser={authenticatedUser}
+                viewerCampaignsCodeHosts={spec.viewerCampaignsCodeHosts}
+            />
+            <SupersedingCampaignSpecAlert spec={spec.supersedingCampaignSpec} />
             <CreateUpdateCampaignAlert
                 history={history}
                 specID={spec.id}

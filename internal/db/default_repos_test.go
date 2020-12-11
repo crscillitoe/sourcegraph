@@ -7,10 +7,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
+
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 func Test_defaultRepos_List(t *testing.T) {
@@ -19,7 +20,7 @@ func Test_defaultRepos_List(t *testing.T) {
 	}
 	tcs := []struct {
 		name  string
-		repos []*types.Repo
+		repos []*types.RepoName
 	}{
 		{
 			name:  "empty case",
@@ -27,7 +28,7 @@ func Test_defaultRepos_List(t *testing.T) {
 		},
 		{
 			name: "one repo",
-			repos: []*types.Repo{
+			repos: []*types.RepoName{
 				{
 					ID:   api.RepoID(0),
 					Name: "github.com/foo/bar",
@@ -36,7 +37,7 @@ func Test_defaultRepos_List(t *testing.T) {
 		},
 		{
 			name: "a few repos",
-			repos: []*types.Repo{
+			repos: []*types.RepoName{
 				{
 					ID:   api.RepoID(0),
 					Name: "github.com/foo/bar",
@@ -68,8 +69,8 @@ func Test_defaultRepos_List(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			sort.Sort(types.Repos(repos))
-			sort.Sort(types.Repos(tc.repos))
+			sort.Sort(types.RepoNames(repos))
+			sort.Sort(types.RepoNames(tc.repos))
 			if diff := cmp.Diff(repos, tc.repos, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
@@ -104,7 +105,7 @@ func Test_defaultRepos_List(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		want := []*types.Repo{
+		want := []*types.RepoName{
 			{
 				ID:   api.RepoID(10),
 				Name: "github.com/foo/bar10",

@@ -90,6 +90,12 @@ type ListCampaignsCodeHostsArgs struct {
 	UserID int32
 }
 
+type ListViewerCampaignsCodeHostsArgs struct {
+	First                 int32
+	After                 *string
+	OnlyWithoutCredential bool
+}
+
 type CampaignsResolver interface {
 	// Mutations
 	CreateCampaign(ctx context.Context, args *CreateCampaignArgs) (CampaignResolver, error)
@@ -138,6 +144,10 @@ type CampaignSpecResolver interface {
 	DiffStat(ctx context.Context) (*DiffStat, error)
 
 	AppliesToCampaign(ctx context.Context) (CampaignResolver, error)
+
+	SupersedingCampaignSpec(context.Context) (CampaignSpecResolver, error)
+
+	ViewerCampaignsCodeHosts(ctx context.Context, args *ListViewerCampaignsCodeHostsArgs) (CampaignsCodeHostConnectionResolver, error)
 }
 
 type CampaignDescriptionResolver interface {
@@ -158,6 +168,10 @@ type ChangesetSpecResolver interface {
 
 	ExpiresAt() *DateTime
 
+	Operations(ctx context.Context) ([]campaigns.ReconcilerOperation, error)
+	Delta(ctx context.Context) (ChangesetSpecDeltaResolver, error)
+	Changeset(ctx context.Context) (ChangesetResolver, error)
+
 	ToHiddenChangesetSpec() (HiddenChangesetSpecResolver, bool)
 	ToVisibleChangesetSpec() (VisibleChangesetSpecResolver, bool)
 }
@@ -170,6 +184,17 @@ type VisibleChangesetSpecResolver interface {
 	ChangesetSpecResolver
 
 	Description(ctx context.Context) (ChangesetDescription, error)
+}
+
+type ChangesetSpecDeltaResolver interface {
+	TitleChanged() bool
+	BodyChanged() bool
+	Undraft() bool
+	BaseRefChanged() bool
+	DiffChanged() bool
+	CommitMessageChanged() bool
+	AuthorNameChanged() bool
+	AuthorEmailChanged() bool
 }
 
 type ChangesetDescription interface {
@@ -242,6 +267,7 @@ type ListChangesetsArgs struct {
 	ReviewState                 *campaigns.ChangesetReviewState
 	CheckState                  *campaigns.ChangesetCheckState
 	OnlyPublishedByThisCampaign *bool
+	Search                      *string
 }
 
 type CampaignResolver interface {

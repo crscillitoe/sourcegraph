@@ -9,10 +9,11 @@ import (
 	"testing"
 
 	"github.com/hashicorp/go-multierror"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
+
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/search"
 	"github.com/sourcegraph/sourcegraph/internal/search/query"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
 
@@ -205,7 +206,7 @@ func TestAlertForOverRepoLimit(t *testing.T) {
 		j := 0
 		for i := range repoRevs {
 			repoRevs[i] = &search.RepositoryRevisions{
-				Repo: &types.Repo{
+				Repo: &types.RepoName{
 					ID:   api.RepoID(i),
 					Name: api.RepoName(chars[j] + "/repoName" + strconv.Itoa(i)),
 				},

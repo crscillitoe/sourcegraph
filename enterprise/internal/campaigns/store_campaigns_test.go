@@ -3,16 +3,16 @@ package campaigns
 import (
 	"context"
 	"fmt"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/keegancsmith/sqlf"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	cmpgn "github.com/sourcegraph/sourcegraph/internal/campaigns"
-	"github.com/sourcegraph/sourcegraph/internal/db/dbtest"
+	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
+	"github.com/sourcegraph/sourcegraph/internal/db/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 )
 
 func testStoreCampaigns(t *testing.T, ctx context.Context, s *Store, _ repos.Store, clock clock) {
@@ -28,7 +28,6 @@ func testStoreCampaigns(t *testing.T, ctx context.Context, s *Store, _ repos.Sto
 				LastAppliedAt:    clock.now(),
 				LastApplierID:    int32(i) + 99,
 
-				ChangesetIDs:   []int64{int64(i) + 1},
 				CampaignSpecID: 1742 + int64(i),
 				ClosedAt:       clock.now(),
 			}
@@ -78,7 +77,11 @@ func testStoreCampaigns(t *testing.T, ctx context.Context, s *Store, _ repos.Sto
 			t.Fatalf("have count: %d, want: %d", have, want)
 		}
 
-		count, err = s.CountCampaigns(ctx, CountCampaignsOpts{ChangesetID: 1})
+		changeset := createChangeset(t, ctx, s, testChangesetOpts{
+			campaignIDs: []int64{campaigns[0].ID},
+		})
+
+		count, err = s.CountCampaigns(ctx, CountCampaignsOpts{ChangesetID: changeset.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +154,10 @@ func testStoreCampaigns(t *testing.T, ctx context.Context, s *Store, _ repos.Sto
 	t.Run("List", func(t *testing.T) {
 		t.Run("By ChangesetID", func(t *testing.T) {
 			for i := 1; i <= len(campaigns); i++ {
-				opts := ListCampaignsOpts{ChangesetID: int64(i)}
+				changeset := createChangeset(t, ctx, s, testChangesetOpts{
+					campaignIDs: []int64{campaigns[i-1].ID},
+				})
+				opts := ListCampaignsOpts{ChangesetID: changeset.ID}
 
 				ts, next, err := s.ListCampaigns(ctx, opts)
 				if err != nil {
@@ -347,44 +353,6 @@ func testStoreCampaigns(t *testing.T, ctx context.Context, s *Store, _ repos.Sto
 			if diff := cmp.Diff(have, want); diff != "" {
 				t.Fatal(diff)
 			}
-
-			// Test that duplicates are not introduced.
-			have.ChangesetIDs = append(have.ChangesetIDs, have.ChangesetIDs...)
-			if err := s.UpdateCampaign(ctx, have); err != nil {
-				t.Fatal(err)
-			}
-
-			if diff := cmp.Diff(have, want); diff != "" {
-				t.Fatal(diff)
-			}
-
-			// Test we can add to the set.
-			have.ChangesetIDs = append(have.ChangesetIDs, 42)
-			want.ChangesetIDs = append(want.ChangesetIDs, 42)
-
-			if err := s.UpdateCampaign(ctx, have); err != nil {
-				t.Fatal(err)
-			}
-
-			sort.Slice(have.ChangesetIDs, func(a, b int) bool {
-				return have.ChangesetIDs[a] < have.ChangesetIDs[b]
-			})
-
-			if diff := cmp.Diff(have, want); diff != "" {
-				t.Fatal(diff)
-			}
-
-			// Test we can remove from the set.
-			have.ChangesetIDs = have.ChangesetIDs[:0]
-			want.ChangesetIDs = want.ChangesetIDs[:0]
-
-			if err := s.UpdateCampaign(ctx, have); err != nil {
-				t.Fatal(err)
-			}
-
-			if diff := cmp.Diff(have, want); diff != "" {
-				t.Fatal(diff)
-			}
 		}
 	})
 
@@ -506,17 +474,18 @@ func TestUserDeleteCascades(t *testing.T) {
 		t.Skip()
 	}
 
-	db := dbtest.NewDB(t, *dsn)
-	orgID := insertTestOrg(t, db)
-	userID := insertTestUser(t, db)
+	dbtesting.SetupGlobalTestDB(t)
 
-	t.Run("user delete", storeTest(db, func(t *testing.T, ctx context.Context, store *Store, rs repos.Store, clock clock) {
+	orgID := insertTestOrg(t, dbconn.Global)
+	user := createTestUser(t, false)
+
+	t.Run("user delete", storeTest(dbconn.Global, func(t *testing.T, ctx context.Context, store *Store, rs repos.Store, clock clock) {
 		// Set up two campaigns and specs: one in the user's namespace (which
 		// should be deleted when the user is hard deleted), and one that is
 		// merely created by the user (which should remain).
 		ownedSpec := &campaigns.CampaignSpec{
-			NamespaceUserID: userID,
-			UserID:          userID,
+			NamespaceUserID: user.ID,
+			UserID:          user.ID,
 		}
 		if err := store.CreateCampaignSpec(ctx, ownedSpec); err != nil {
 			t.Fatal(err)
@@ -524,7 +493,7 @@ func TestUserDeleteCascades(t *testing.T) {
 
 		unownedSpec := &campaigns.CampaignSpec{
 			NamespaceOrgID: orgID,
-			UserID:         userID,
+			UserID:         user.ID,
 		}
 		if err := store.CreateCampaignSpec(ctx, unownedSpec); err != nil {
 			t.Fatal(err)
@@ -532,9 +501,9 @@ func TestUserDeleteCascades(t *testing.T) {
 
 		ownedCampaign := &campaigns.Campaign{
 			Name:             "owned",
-			NamespaceUserID:  userID,
-			InitialApplierID: userID,
-			LastApplierID:    userID,
+			NamespaceUserID:  user.ID,
+			InitialApplierID: user.ID,
+			LastApplierID:    user.ID,
 			LastAppliedAt:    clock.now(),
 			CampaignSpecID:   ownedSpec.ID,
 		}
@@ -545,8 +514,8 @@ func TestUserDeleteCascades(t *testing.T) {
 		unownedCampaign := &campaigns.Campaign{
 			Name:             "unowned",
 			NamespaceOrgID:   orgID,
-			InitialApplierID: userID,
-			LastApplierID:    userID,
+			InitialApplierID: user.ID,
+			LastApplierID:    user.ID,
 			LastAppliedAt:    clock.now(),
 			CampaignSpecID:   ownedSpec.ID,
 		}
@@ -557,7 +526,7 @@ func TestUserDeleteCascades(t *testing.T) {
 		// Now we'll try actually deleting the user.
 		if err := store.Store.Exec(ctx, sqlf.Sprintf(
 			"DELETE FROM users WHERE id = %s",
-			userID,
+			user.ID,
 		)); err != nil {
 			t.Fatal(err)
 		}

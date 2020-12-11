@@ -11,14 +11,16 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/resolvers/apitest"
 	ct "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/testing"
+	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/db"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/extsvc"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 )
 
 func TestCampaignSpecResolver(t *testing.T) {
@@ -42,6 +44,7 @@ func TestCampaignSpecResolver(t *testing.T) {
 	username := "campaign-spec-by-id-user-name"
 	orgname := "test-org"
 	userID := insertTestUser(t, dbconn.Global, username, false)
+	adminID := insertTestUser(t, dbconn.Global, "alice", true)
 	org, err := db.Orgs.Create(ctx, orgname, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +124,7 @@ func TestCampaignSpecResolver(t *testing.T) {
 					Description: apitest.ChangesetSpecDescription{
 						BaseRepository: apitest.Repository{
 							ID:   string(repoID),
-							Name: repo.Name,
+							Name: string(repo.Name),
 						},
 					},
 				},
@@ -137,12 +140,73 @@ func TestCampaignSpecResolver(t *testing.T) {
 		AppliesToCampaign: apitest.Campaign{
 			ID: string(marshalCampaignID(matchingCampaign.ID)),
 		},
+
+		AllCodeHosts: apitest.CampaignsCodeHostsConnection{
+			TotalCount: 1,
+			Nodes:      []apitest.CampaignsCodeHost{{ExternalServiceKind: extsvc.KindGitHub, ExternalServiceURL: "https://github.com/"}},
+		},
+		OnlyWithoutCredential: apitest.CampaignsCodeHostsConnection{
+			TotalCount: 1,
+			Nodes:      []apitest.CampaignsCodeHost{{ExternalServiceKind: extsvc.KindGitHub, ExternalServiceURL: "https://github.com/"}},
+		},
 	}
 
 	input := map[string]interface{}{"campaignSpec": apiID}
 	{
 		var response struct{ Node apitest.CampaignSpec }
-		apitest.MustExec(ctx, t, s, input, &response, queryCampaignSpecNode)
+		apitest.MustExec(actor.WithActor(context.Background(), actor.FromUser(userID)), t, s, input, &response, queryCampaignSpecNode)
+
+		if diff := cmp.Diff(want, response.Node); diff != "" {
+			t.Fatalf("unexpected response (-want +got):\n%s", diff)
+		}
+	}
+
+	// Now create an updated changeset spec and check that we get a superseding
+	// campaign spec.
+	sup, err := campaigns.NewCampaignSpecFromRaw(ct.TestRawCampaignSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup.UserID = userID
+	sup.NamespaceOrgID = orgID
+	if err := store.CreateCampaignSpec(ctx, sup); err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		var response struct{ Node apitest.CampaignSpec }
+
+		// Note that we have to execute as the actual user, since a superseding
+		// spec isn't returned for an admin.
+		apitest.MustExec(actor.WithActor(context.Background(), actor.FromUser(userID)), t, s, input, &response, queryCampaignSpecNode)
+
+		// Expect an ID on the superseding campaign spec.
+		want.SupersedingCampaignSpec = &apitest.CampaignSpec{
+			ID: string(marshalCampaignSpecRandID(sup.RandID)),
+		}
+
+		if diff := cmp.Diff(want, response.Node); diff != "" {
+			t.Fatalf("unexpected response (-want +got):\n%s", diff)
+		}
+	}
+
+	// If the superseding campaign spec was created by a different user, then we
+	// shouldn't return it.
+	sup.UserID = adminID
+	if err := store.UpdateCampaignSpec(ctx, sup); err != nil {
+		t.Fatal(err)
+	}
+
+	{
+		var response struct{ Node apitest.CampaignSpec }
+
+		// Note that we have to execute as the actual user, since a superseding
+		// spec isn't returned for an admin.
+		apitest.MustExec(actor.WithActor(context.Background(), actor.FromUser(userID)), t, s, input, &response, queryCampaignSpecNode)
+
+		// Expect no superseding campaign spec, since this request is run as a
+		// different user.
+		want.SupersedingCampaignSpec = nil
 
 		if diff := cmp.Diff(want, response.Node); diff != "" {
 			t.Fatalf("unexpected response (-want +got):\n%s", diff)
@@ -156,10 +220,17 @@ func TestCampaignSpecResolver(t *testing.T) {
 	}
 	{
 		var response struct{ Node apitest.CampaignSpec }
-		apitest.MustExec(ctx, t, s, input, &response, queryCampaignSpecNode)
+		apitest.MustExec(actor.WithActor(context.Background(), actor.FromUser(adminID)), t, s, input, &response, queryCampaignSpecNode)
 
 		// Expect creator to not be returned anymore.
 		want.Creator = nil
+		// Expect all set for admin user.
+		want.OnlyWithoutCredential = apitest.CampaignsCodeHostsConnection{
+			Nodes: []apitest.CampaignsCodeHost{},
+		}
+		// Expect no superseding campaign spec, since this request is run as a
+		// different user.
+		want.SupersedingCampaignSpec = nil
 
 		if diff := cmp.Diff(want, response.Node); diff != "" {
 			t.Fatalf("unexpected response (-want +got):\n%s", diff)
@@ -173,10 +244,14 @@ func TestCampaignSpecResolver(t *testing.T) {
 	}
 	{
 		var response struct{ Node apitest.CampaignSpec }
-		apitest.MustExec(ctx, t, s, input, &response, queryCampaignSpecNode)
+		apitest.MustExec(actor.WithActor(context.Background(), actor.FromUser(adminID)), t, s, input, &response, queryCampaignSpecNode)
 
 		// Expect creator to not be returned anymore.
 		want.Creator = nil
+		// Expect all set for admin user.
+		want.OnlyWithoutCredential = apitest.CampaignsCodeHostsConnection{
+			Nodes: []apitest.CampaignsCodeHost{},
+		}
 
 		if diff := cmp.Diff(want, response.Node); diff != "" {
 			t.Fatalf("unexpected response (-want +got):\n%s", diff)
@@ -211,7 +286,25 @@ query($campaignSpec: ID!) {
 
       diffStat { added, deleted, changed }
 
-      appliesToCampaign { id }
+	  appliesToCampaign { id }
+
+	  supersedingCampaignSpec { id }
+
+	  allCodeHosts: viewerCampaignsCodeHosts {
+		totalCount
+		  nodes {
+			  externalServiceKind
+			  externalServiceURL
+		  }
+	  }
+
+	  onlyWithoutCredential: viewerCampaignsCodeHosts(onlyWithoutCredential: true) {
+		  totalCount
+		  nodes {
+			  externalServiceKind
+			  externalServiceURL
+		  }
+	  }
 
       changesetSpecs(first: 100) {
         totalCount

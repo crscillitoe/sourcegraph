@@ -79,24 +79,15 @@ func NewRepositoryComparison(ctx context.Context, r *RepositoryResolver, args *R
 		opt := git.ResolveRevisionOptions{
 			NoEnsureRevision: !args.FetchMissing,
 		}
-		// Optimistically fetch using revspec
-		commit, err := git.GetCommit(ctx, repo, nil, api.CommitID(revspec), opt)
-		if err == nil {
-			return toGitCommitResolver(r, commit), nil
-		}
 
 		// Call ResolveRevision to trigger fetches from remote (in case base/head commits don't
 		// exist).
-		commitID, err := git.ResolveRevision(ctx, repo, nil, revspec, opt)
+		commitID, err := git.ResolveRevision(ctx, repo, revspec, opt)
 		if err != nil {
 			return nil, err
 		}
 
-		commit, err = git.GetCommit(ctx, repo, nil, commitID, opt)
-		if err != nil {
-			return nil, err
-		}
-		return toGitCommitResolver(r, commit), nil
+		return toGitCommitResolver(r, commitID, nil), nil
 	}
 
 	grepo, err := backend.CachedGitRepo(ctx, r.repo)

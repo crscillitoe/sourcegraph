@@ -12,11 +12,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 // SyncRegistry manages a ChangesetSyncer per code host
@@ -35,8 +36,8 @@ type SyncRegistry struct {
 }
 
 type RepoStore interface {
-	ListExternalServices(context.Context, repos.StoreListExternalServicesArgs) ([]*repos.ExternalService, error)
-	ListRepos(context.Context, repos.StoreListReposArgs) ([]*repos.Repo, error)
+	ListExternalServices(context.Context, repos.StoreListExternalServicesArgs) ([]*types.ExternalService, error)
+	ListRepos(context.Context, repos.StoreListReposArgs) ([]*types.Repo, error)
 }
 
 // NewSyncRegistry creates a new sync registry which starts a syncer for each code host and will update them
@@ -68,7 +69,7 @@ func NewSyncRegistry(ctx context.Context, store SyncStore, repoStore RepoStore, 
 
 // Add adds a syncer for the code host associated with the supplied external service if the syncer hasn't
 // already been added and starts it.
-func (s *SyncRegistry) Add(extSvc *repos.ExternalService) {
+func (s *SyncRegistry) Add(extSvc *types.ExternalService) {
 	if !campaigns.IsKindSupported(extSvc.Kind) {
 		log15.Info("External service not support by campaigns", "kind", extSvc.Kind)
 		return
@@ -176,7 +177,7 @@ func (s *SyncRegistry) HandleExternalServiceSync(es api.ExternalService) {
 	s.mu.Unlock()
 
 	if es.DeletedAt.IsZero() && !exists {
-		res := (repos.ExternalService)(es)
+		res := (types.ExternalService)(es)
 		s.Add(&res)
 	}
 
@@ -290,11 +291,6 @@ func (s *ChangesetSyncer) Run(ctx context.Context) {
 		log15.Error("Computing schedule", "err", err)
 	} else {
 		s.queue.Upsert(sched...)
-	}
-
-	// Prioritize changesets without diffstats on startup.
-	if err := s.prioritizeChangesetsWithoutDiffStats(ctx); err != nil {
-		log15.Error("Prioritizing changesets", "err", err)
 	}
 
 	var next scheduledSync
@@ -461,31 +457,6 @@ func (s *ChangesetSyncer) computeSchedule(ctx context.Context) ([]scheduledSync,
 	return ss, nil
 }
 
-func (s *ChangesetSyncer) prioritizeChangesetsWithoutDiffStats(ctx context.Context) error {
-	published := campaigns.ChangesetPublicationStatePublished
-	changesets, _, err := s.syncStore.ListChangesets(ctx, ListChangesetsOpts{
-		OnlyWithoutDiffStats: true,
-		ExternalServiceID:    s.codeHostURL,
-		PublicationState:     &published,
-		ReconcilerStates:     []campaigns.ReconcilerState{campaigns.ReconcilerStateCompleted},
-	})
-	if err != nil {
-		return err
-	}
-
-	if len(changesets) == 0 {
-		return nil
-	}
-
-	ids := make([]int64, 0, len(changesets))
-	for _, cs := range changesets {
-		ids = append(ids, cs.ID)
-	}
-	s.priorityNotify <- ids
-
-	return nil
-}
-
 // SyncChangeset will sync a single changeset given its id.
 func (s *ChangesetSyncer) SyncChangeset(ctx context.Context, id int64) error {
 	log15.Debug("SyncChangeset", "id", id)
@@ -515,7 +486,7 @@ func (s *ChangesetSyncer) SyncChangeset(ctx context.Context, id int64) error {
 
 // SyncChangeset refreshes the metadata of the given changeset and
 // updates them in the database.
-func SyncChangeset(ctx context.Context, repoStore RepoStore, syncStore SyncStore, source repos.ChangesetSource, repo *repos.Repo, c *campaigns.Changeset) (err error) {
+func SyncChangeset(ctx context.Context, repoStore RepoStore, syncStore SyncStore, source repos.ChangesetSource, repo *types.Repo, c *campaigns.Changeset) (err error) {
 	repoChangeset := &repos.Changeset{Repo: repo, Changeset: c}
 	if err := source.LoadChangeset(ctx, repoChangeset); err != nil {
 		_, ok := err.(repos.ChangesetNotFoundError)
@@ -548,7 +519,7 @@ func SyncChangeset(ctx context.Context, repoStore RepoStore, syncStore SyncStore
 // buildChangesetSource returns a ChangesetSource for the given external service.
 func buildChangesetSource(
 	sourcer repos.Sourcer,
-	extSvc *repos.ExternalService,
+	extSvc *types.ExternalService,
 ) (repos.ChangesetSource, error) {
 	sources, err := sourcer(extSvc)
 	if err != nil {

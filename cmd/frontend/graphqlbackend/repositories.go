@@ -8,14 +8,15 @@ import (
 	"github.com/google/zoekt"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/pkg/errors"
+
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/envvar"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend/graphqlutil"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/db"
 	"github.com/sourcegraph/sourcegraph/internal/repoupdater"
 	"github.com/sourcegraph/sourcegraph/internal/search"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 func (r *schemaResolver) Repositories(args *struct {
@@ -316,20 +317,20 @@ func repoNamesToStrings(repoNames []api.RepoName) []string {
 	return strings
 }
 
-func toRepositoryResolvers(repos []*types.Repo) []*RepositoryResolver {
+func toRepositoryResolvers(repos []*types.RepoName) []*RepositoryResolver {
 	if len(repos) == 0 {
 		return []*RepositoryResolver{}
 	}
 
 	resolvers := make([]*RepositoryResolver, len(repos))
 	for i := range repos {
-		resolvers[i] = &RepositoryResolver{repo: repos[i]}
+		resolvers[i] = &RepositoryResolver{repo: repos[i].ToRepo()}
 	}
 
 	return resolvers
 }
 
-func toRepoNames(repos []*types.Repo) []api.RepoName {
+func toRepoNames(repos []*types.RepoName) []api.RepoName {
 	names := make([]api.RepoName, len(repos))
 	for i, repo := range repos {
 		names[i] = repo.Name

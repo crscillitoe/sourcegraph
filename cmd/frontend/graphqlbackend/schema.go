@@ -197,12 +197,24 @@ type Mutation {
     """
     removeUserEmail(user: ID!, email: String!): EmptyResponse!
     """
+    Set an email address as the user's primary.
+
+    Only the user and site admins may perform this mutation.
+    """
+    setUserEmailPrimary(user: ID!, email: String!): EmptyResponse!
+    """
     Manually set the verification status of a user's email, without going through the normal verification process
     (of clicking on a link in the email with a verification code).
 
     Only site admins may perform this mutation.
     """
     setUserEmailVerified(user: ID!, email: String!, verified: Boolean!): EmptyResponse!
+    """
+    Resend a verification email, no op if the email is already verified.
+
+    Only the user and site admins may perform this mutation.
+    """
+    resendVerificationEmail(user: ID!, email: String!): EmptyResponse!
     """
     Deletes a user account. Only site admins may perform this mutation.
 
@@ -556,6 +568,11 @@ type Mutation {
     deleteLSIFIndex(id: ID!): EmptyResponse
 
     """
+    Updates the indexing configuration associated with a repository.
+    """
+    updateRepositoryIndexConfiguration(repository: ID!, configuration: String!): EmptyResponse
+
+    """
     Set the permissions of a repository (i.e., which users may view it on Sourcegraph). This
     operation overwrites the previous permissions for the repository.
     """
@@ -701,11 +718,16 @@ type Mutation {
     syncChangeset(changeset: ID!): EmptyResponse!
 
     """
-    Create a new credential for the requesting user for the given code host.
+    Create a new credential for the given user for the given code host.
     If another token for that code host already exists, an error with the error code
     ErrDuplicateCredential is returned.
     """
     createCampaignsCredential(
+        """
+        The user for which to create the credential.
+        """
+        user: ID!
+
         """
         The kind of external service being configured.
         """
@@ -744,18 +766,9 @@ type Mutation {
     """
     createCodeMonitor(
         """
-        The namespace represents the owner of the code monitor.
-        Owners can either be users or organizations.
+        A monitor.
         """
-        namespace: ID!
-        """
-        A meaningful description of the code monitor.
-        """
-        description: String!
-        """
-        Whether the code monitor is enabled or not.
-        """
-        enabled: Boolean!
+        monitor: MonitorInput!
         """
         A trigger.
         """
@@ -764,6 +777,50 @@ type Mutation {
         A list of actions.
         """
         actions: [MonitorActionInput!]!
+    ): Monitor!
+    """
+    Set a code monitor to active/inactive.
+    """
+    toggleCodeMonitor(
+        """
+        The id of a code monitor.
+        """
+        id: ID!
+        """
+        Whether the code monitor should be enabled or not.
+        """
+        enabled: Boolean!
+    ): Monitor!
+    """
+    Delete a code monitor.
+    """
+    deleteCodeMonitor(
+        """
+        The id of a code monitor.
+        """
+        id: ID!
+    ): EmptyResponse!
+    """
+    Update a code monitor. We assume that the request contains a complete code monitor,
+    including its trigger and all actions. Actions which are stored in the database,
+    but are missing from the request will be deleted from the database. Actions with id=null
+    will be created.
+    """
+    updateCodeMonitor(
+        """
+        The input required to edit a monitor.
+        """
+        monitor: MonitorEditInput!
+        """
+        The input required to edit the trigger of a monitor. You can only edit triggers that are
+        associated with the monitor (value of field monitor).
+        """
+        trigger: MonitorEditTriggerInput!
+        """
+        The input required to edit the actions of a monitor. You can only edit actions that are
+        associated with the monitor (value of field monitor).
+        """
+        actions: [MonitorEditActionInput!]!
     ): Monitor!
 }
 
@@ -834,6 +891,91 @@ type CampaignsCredential implements Node {
 }
 
 """
+This enum declares all operations supported by the reconciler.
+"""
+enum ChangesetSpecOperation {
+    """
+    Push a new commit to the code host.
+    """
+    PUSH
+    """
+    Update the existing changeset on the codehost. This is purely the changeset resource on the code host,
+    not the git commit. For updates to the commit, see 'PUSH'.
+    """
+    UPDATE
+    """
+    Move the existing changeset out of being a draft.
+    """
+    UNDRAFT
+    """
+    Publish a changeset to the codehost.
+    """
+    PUBLISH
+    """
+    Publish a changeset to the codehost as a draft changeset. (Only on supported code hosts).
+    """
+    PUBLISH_DRAFT
+    """
+    Sync the changeset with the current state on the codehost.
+    """
+    SYNC
+    """
+    Import an existing changeset from the code host with the ExternalID from the spec.
+    """
+    IMPORT
+    """
+    Close the changeset on the codehost.
+    """
+    CLOSE
+    """
+    Reopen the changeset on the codehost.
+    """
+    REOPEN
+    """
+    Internal operation to get around slow code host updates.
+    """
+    SLEEP
+}
+
+"""
+Description of the current changeset state vs the changeset spec desired state.
+"""
+type ChangesetSpecDelta {
+    """
+    When run, the title of the changeset will be updated.
+    """
+    titleChanged: Boolean!
+    """
+    When run, the body of the changeset will be updated.
+    """
+    bodyChanged: Boolean!
+    """
+    When run, the changeset will be taken out of draft mode.
+    """
+    undraft: Boolean!
+    """
+    When run, the target branch of the changeset will be updated.
+    """
+    baseRefChanged: Boolean!
+    """
+    When run, a new commit will be created on the branch of the changeset.
+    """
+    diffChanged: Boolean!
+    """
+    When run, a new commit will be created on the branch of the changeset.
+    """
+    commitMessageChanged: Boolean!
+    """
+    When run, a new commit in the name of the specified author will be created on the branch of the changeset.
+    """
+    authorNameChanged: Boolean!
+    """
+    When run, a new commit in the name of the specified author will be created on the branch of the changeset.
+    """
+    authorEmailChanged: Boolean!
+}
+
+"""
 The type of the changeset spec.
 """
 enum ChangesetSpecType {
@@ -862,6 +1004,21 @@ interface ChangesetSpec {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
+
+    """
+    The operations to take to achieve the desired state of this changeset spec.
+    """
+    operations: [ChangesetSpecOperation!]!
+
+    """
+    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
+    """
+    delta: ChangesetSpecDelta!
+
+    """
+    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
+    """
+    changeset: Changeset
 }
 
 """
@@ -891,6 +1048,21 @@ type HiddenChangesetSpec implements ChangesetSpec & Node {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
+
+    """
+    The operations to take to achieve the desired state of this changeset spec.
+    """
+    operations: [ChangesetSpecOperation!]!
+
+    """
+    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
+    """
+    delta: ChangesetSpecDelta!
+
+    """
+    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
+    """
+    changeset: Changeset
 }
 
 """
@@ -925,6 +1097,21 @@ type VisibleChangesetSpec implements ChangesetSpec & Node {
     spec never expires (and this field is null) if its campaign spec has been applied.
     """
     expiresAt: DateTime
+
+    """
+    The operations to take to achieve the desired state of this changeset spec.
+    """
+    operations: [ChangesetSpecOperation!]!
+
+    """
+    The delta between the current changeset state and what this changeset spec envisions the changeset to look like.
+    """
+    delta: ChangesetSpecDelta!
+
+    """
+    The changeset that this changeset spec will modify. Null, if the changeset spec will create a new changeset.
+    """
+    changeset: Changeset
 }
 
 """
@@ -1185,6 +1372,30 @@ type CampaignSpec implements Node {
     campaign doesn't yet exist.
     """
     appliesToCampaign: Campaign
+
+    """
+    The newest version of this campaign spec, as identified by its namespace
+    and name. If this is the newest version, this field will be null.
+    """
+    supersedingCampaignSpec: CampaignSpec
+
+    """
+    The code host connections required for applying this spec. Includes the credentials of the current user.
+    """
+    viewerCampaignsCodeHosts(
+        """
+        Returns the first n code hosts from the list.
+        """
+        first: Int = 50
+        """
+        Opaque pagination cursor.
+        """
+        after: String
+        """
+        Only returns the code hosts for which the viewer doesn't have credentials.
+        """
+        onlyWithoutCredential: Boolean = false
+    ): CampaignsCodeHostConnection!
 }
 
 """
@@ -1312,6 +1523,10 @@ type Campaign implements Node {
         Only return changesets that have been published by this campaign. Imported changesets will be omitted.
         """
         onlyPublishedByThisCampaign: Boolean
+        """
+        Search for changesets matching this query. Queries may include quoted substrings to match phrases, and words may be preceded by - to negate them.
+        """
+        search: String
     ): ChangesetConnection!
 
     """
@@ -1435,9 +1650,14 @@ enum ChangesetReconcilerState {
 
     """
     The changeset reconciler ran into a problem while processing the
-    changeset.
+    changeset and will retry it for a number of retries.
     """
     ERRORED
+    """
+    The changeset reconciler ran into a problem while processing the
+    changeset that can't be fixed by retrying.
+    """
+    FAILED
 
     """
     The changeset is not enqueued for processing.
@@ -2461,6 +2681,10 @@ type Query {
     FOR INTERNAL USE ONLY: Lists all status messages
     """
     statusMessages: [StatusMessage!]!
+    """
+    FOR INTERNAL USE ONLY: Query repository statistics for the site.
+    """
+    repositoryStats: RepositoryStats!
 
     """
     Look up a namespace by ID.
@@ -2585,6 +2809,12 @@ type Query {
         """
         after: String
     ): LSIFIndexConnection!
+
+    """
+    Repos affiliated with the user & code hosts, these repos are not necessarily synced, but ones that
+    the configured code hosts are able to see.
+    """
+    affiliatedRepositories(user: ID!, codeHost: ID, query: String): CodeHostRepositoryConnection!
 }
 
 """
@@ -3009,7 +3239,7 @@ type Monitor implements Node {
     """
     Triggers trigger actions. There can only be one trigger per monitor.
     """
-    trigger: MonitorTrigger
+    trigger: MonitorTrigger!
     """
     One or more actions that are triggered by the trigger.
     """
@@ -3156,9 +3386,18 @@ type MonitorEmail implements Node {
     """
     header: String!
     """
-    The recipients of the email.
+    A list of recipients of the email.
     """
-    recipient: MonitorEmailRecipient!
+    recipients(
+        """
+        Returns the first n recipients from the list.
+        """
+        first: Int = 50
+        """
+        Opaque pagination cursor.
+        """
+        after: String
+    ): MonitorActionEmailRecipientsConnection!
     """
     A list of events.
     """
@@ -3183,9 +3422,22 @@ enum MonitorEmailPriority {
 }
 
 """
-Supported types of recipients for email actions.
+A list of events.
 """
-union MonitorEmailRecipient = User
+type MonitorActionEmailRecipientsConnection {
+    """
+    A list of recipients.
+    """
+    nodes: [Namespace!]!
+    """
+    The total number of recipients in the connection.
+    """
+    totalCount: Int!
+    """
+    Pagination information.
+    """
+    pageInfo: PageInfo!
+}
 
 """
 A list of events.
@@ -3237,6 +3489,39 @@ enum EventStatus {
 }
 
 """
+The input required to create a code monitor.
+"""
+input MonitorInput {
+    """
+    The namespace represents the owner of the code monitor.
+    Owners can either be users or organizations.
+    """
+    namespace: ID!
+    """
+    A meaningful description of the code monitor.
+    """
+    description: String!
+    """
+    Whether the code monitor is enabled or not.
+    """
+    enabled: Boolean!
+}
+
+"""
+The input required to edit a code monitor.
+"""
+input MonitorEditInput {
+    """
+    The id of the monitor.
+    """
+    id: ID!
+    """
+    The desired state after the udpate.
+    """
+    update: MonitorInput!
+}
+
+"""
 The input required to create a trigger.
 """
 input MonitorTriggerInput {
@@ -3244,6 +3529,20 @@ input MonitorTriggerInput {
     The query string.
     """
     query: String!
+}
+
+"""
+The input required to edit a trigger.
+"""
+input MonitorEditTriggerInput {
+    """
+    The id of the Trigger.
+    """
+    id: ID!
+    """
+    The desired state after the udpate.
+    """
+    update: MonitorTriggerInput!
 }
 
 """
@@ -3276,6 +3575,29 @@ input MonitorEmailInput {
     Use header to automatically approve the message in a read-only or moderated mailing list.
     """
     header: String!
+}
+"""
+The input required to edit an action.
+"""
+input MonitorEditActionInput {
+    """
+    An email action.
+    """
+    email: MonitorEditEmailInput
+}
+
+"""
+The input required to edit an email action.
+"""
+input MonitorEditEmailInput {
+    """
+    The id of an email action.
+    """
+    id: ID
+    """
+    The desired state after the update.
+    """
+    update: MonitorEmailInput!
 }
 
 """
@@ -3806,6 +4128,11 @@ type Repository implements Node & GenericSearchResultInterface {
     ): LSIFIndexConnection!
 
     """
+    Gets the indexing configuration associated with the repository.
+    """
+    indexConfiguration: IndexConfiguration
+
+    """
     A list of authorized users to access this repository with the given permission.
     This API currently only returns permissions from the Sourcegraph provider, i.e.
     "permissions.userMapping" in site configuration.
@@ -4294,6 +4621,22 @@ type HighlightedDiffHunkBody {
     The highlighted lines.
     """
     lines: [HighlightedDiffHunkLine!]!
+}
+
+"""
+A specific highlighted line range to fetch.
+"""
+input HighlightLineRange {
+    """
+    The first line to fetch (0-indexed, inclusive). Values outside the bounds of the file will
+    automatically be clamped within the valid range.
+    """
+    startLine: Int!
+    """
+    The last line to fetch (0-indexed, inclusive). Values outside the bounds of the file will
+    automatically be clamped within the valid range.
+    """
+    endLine: Int!
 }
 
 """
@@ -5506,7 +5849,17 @@ type GitBlob implements TreeEntry & File2 {
     """
     Highlight the blob contents.
     """
-    highlight(disableTimeout: Boolean!, isLightTheme: Boolean!, highlightLongLines: Boolean = false): HighlightedFile!
+    highlight(
+        disableTimeout: Boolean!
+        isLightTheme: Boolean!
+        """
+        If highlightLongLines is true, lines which are longer than 2000 bytes are highlighted.
+        2000 bytes is enabled. This may produce a significant amount of HTML
+        which some browsers (such as Chrome, but not Firefox) may have trouble
+        rendering efficiently.
+        """
+        highlightLongLines: Boolean = false
+    ): HighlightedFile!
     """
     Submodule metadata if this tree points to a submodule
     """
@@ -5672,9 +6025,15 @@ type HighlightedFile {
     """
     aborted: Boolean!
     """
-    The HTML.
+    The HTML table that can be used to display the highlighted file.
     """
     html: String!
+    """
+    A list of the desired line ranges. Each list is a list of lines, where each element is an HTML
+    table row '<tr>...</tr>' string. This is useful if you only need to display specific subsets of
+    the file.
+    """
+    lineRanges(ranges: [HighlightLineRange!]!): [[String!]!]!
 }
 
 """
@@ -6034,6 +6393,44 @@ type User implements Node & SettingsSubject & Namespace {
         """
         after: String
     ): MonitorConnection!
+
+    """
+    Repositories from external services owned by this user.
+    """
+    repositories(
+        """
+        Returns the first n repositories from the list.
+        """
+        first: Int
+        """
+        Return repositories whose names match the query.
+        """
+        query: String
+        """
+        An opaque cursor that is used for pagination.
+        """
+        after: String
+        """
+        Include cloned repositories.
+        """
+        cloned: Boolean = true
+        """
+        Include repositories that are not yet cloned and for which cloning is not in progress.
+        """
+        notCloned: Boolean = true
+        """
+        Include repositories that have a text search index.
+        """
+        indexed: Boolean = true
+        """
+        Include repositories that do not have a text search index.
+        """
+        notIndexed: Boolean = true
+        """
+        Only include repositories from this external service.
+        """
+        externalServiceID: ID
+    ): RepositoryConnection!
 }
 
 """
@@ -7706,6 +8103,16 @@ type LSIFIndex implements Node {
     inputCommit: String!
 
     """
+    The original root supplied at index schedule time.
+    """
+    inputRoot: String!
+
+    """
+    The name of the target indexer Docker image (e.g., sourcegraph/lsif-go@sha256:...).
+    """
+    inputIndexer: String!
+
+    """
     The index's current state.
     """
     state: LSIFIndexState!
@@ -7731,9 +8138,125 @@ type LSIFIndex implements Node {
     failure: String
 
     """
+    The configuration and execution summary (if completed or errored) of this index job.
+    """
+    steps: IndexSteps!
+
+    """
     The rank of this index in the queue. The value of this field is null if the index has been processed.
     """
     placeInQueue: Int
+}
+
+"""
+Configuration and execution summary of an index job.
+"""
+type IndexSteps {
+    """
+    Execution log entries related to setting up the indexing workspace.
+    """
+    setup: [ExecutionLogEntry!]!
+
+    """
+    Configuration and execution summary (if completed or errored) of steps to be performed prior to indexing.
+    """
+    preIndex: [PreIndexStep!]!
+
+    """
+    Configuration and execution summary (if completed or errored) of the indexer.
+    """
+    index: IndexStep!
+
+    """
+    Execution log entry related to uploading the dump produced by the indexing step.
+    This field be missing if the upload step had not been executed.
+    """
+    upload: ExecutionLogEntry
+
+    """
+    Execution log entries related to tearing down the indexing workspace.
+    """
+    teardown: [ExecutionLogEntry!]!
+}
+
+"""
+The configuration and execution summary of a step to be performed prior to indexing.
+"""
+type PreIndexStep {
+    """
+    The working directory relative to the cloned repository root.
+    """
+    root: String!
+
+    """
+    The name of the Docker image to run.
+    """
+    image: String!
+
+    """
+    The arguments to supply to the Docker container's entrypoint.
+    """
+    commands: [String!]!
+
+    """
+    The execution summary (if completed or errored) of the docker command.
+    """
+    logEntry: ExecutionLogEntry
+}
+
+"""
+The configuration and execution summary of the indexer.
+"""
+type IndexStep {
+    """
+    The arguments to supply to the indexer container.
+    """
+    indexerArgs: [String!]!
+
+    """
+    The path to the index file relative to the root directory (dump.lsif by default).
+    """
+    outfile: String
+
+    """
+    The execution summary (if completed or errored) of the index command.
+    """
+    logEntry: ExecutionLogEntry
+}
+
+"""
+A description of a command run inside the executor to during processing of the parent record.
+"""
+type ExecutionLogEntry {
+    """
+    An internal tag used to correlate this log entry with other records.
+    """
+    key: String!
+
+    """
+    The arguments of the command run inside the executor.
+    """
+    command: [String!]!
+
+    """
+    The date when this command started.
+    """
+    startTime: DateTime!
+
+    """
+    The exit code of the command.
+    """
+    exitCode: Int!
+
+    """
+    The combined stdout and stderr logs of the command.
+    """
+    out: String!
+
+    """
+    The duration in milliseconds of the command.
+    """
+    durationMilliseconds: Int!
 }
 
 """
@@ -7754,6 +8277,16 @@ type LSIFIndexConnection {
     Pagination information.
     """
     pageInfo: PageInfo!
+}
+
+"""
+Explicit configuration for indexing a repository.
+"""
+type IndexConfiguration {
+    """
+    The raw JSON-encoded index configuration.
+    """
+    configuration: String
 }
 
 """
@@ -8335,6 +8868,25 @@ FOR INTERNAL USE ONLY: A status message
 union StatusMessage = CloningProgress | ExternalServiceSyncError | SyncError
 
 """
+An arbitrarily large integer encoded as a decimal string.
+"""
+scalar BigInt
+
+"""
+FOR INTERNAL USE ONLY: A repository statistic
+"""
+type RepositoryStats {
+    """
+    The amount of bytes stored in .git directories
+    """
+    gitDirBytes: BigInt!
+    """
+    The number of lines indexed
+    """
+    indexedLinesCount: BigInt!
+}
+
+"""
 An RFC 3339-encoded UTC date string, such as 1973-11-29T21:33:09Z. This value can be parsed into a
 JavaScript Date using Date.parse. To produce this value from a JavaScript Date instance, use
 Date#toISOString.
@@ -8403,5 +8955,33 @@ type EventLogsConnection {
     Pagination information.
     """
     pageInfo: PageInfo!
+}
+
+"""
+A list of code host repositories
+"""
+type CodeHostRepositoryConnection {
+    """
+    A list of repositories affiliated with a code host.
+    """
+    nodes: [CodeHostRepository!]!
+}
+
+"""
+A repository returned directly from a code host
+"""
+type CodeHostRepository {
+    """
+    The Name "owner/reponame" of the repo
+    """
+    name: String!
+    """
+    The code host the repo came from
+    """
+    codeHost: ExternalService
+    """
+    Is the repo private
+    """
+    private: Boolean!
 }
 `

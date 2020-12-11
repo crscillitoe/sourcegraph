@@ -13,7 +13,6 @@ import (
 	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/types"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/db/dbconn"
@@ -21,6 +20,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/db/globalstatedb"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 // users provides access to the `users` table.
@@ -260,11 +260,12 @@ func (u *users) create(ctx context.Context, tx *sql.Tx, info NewUser) (newUser *
 	}
 
 	if info.Email != "" {
+		// The first email address added should be their primary
 		var err error
 		if info.EmailIsVerified {
-			_, err = tx.ExecContext(ctx, "INSERT INTO user_emails(user_id, email, verified_at) VALUES ($1, $2, now())", id, info.Email)
+			_, err = tx.ExecContext(ctx, "INSERT INTO user_emails(user_id, email, verified_at, is_primary) VALUES ($1, $2, now(), true)", id, info.Email)
 		} else {
-			_, err = tx.ExecContext(ctx, "INSERT INTO user_emails(user_id, email, verification_code) VALUES ($1, $2, $3)", id, info.Email, info.EmailVerificationCode)
+			_, err = tx.ExecContext(ctx, "INSERT INTO user_emails(user_id, email, verification_code, is_primary) VALUES ($1, $2, $3, true)", id, info.Email, info.EmailVerificationCode)
 		}
 		if err != nil {
 			if pqErr, ok := err.(*pq.Error); ok {
@@ -825,4 +826,36 @@ func (*users) getBySQL(ctx context.Context, query string, args ...interface{}) (
 	}
 
 	return users, nil
+}
+
+const (
+	// If the owner of an external service has this tag, the service is allowed to sync private code
+	TagAllowUserExternalServicePrivate = "AllowUserExternalServicePrivate"
+	// If the owner of an external service has this tag, the service is allowed to sync public code only
+	TagAllowUserExternalServicePublic = "AllowUserExternalServicePublic"
+)
+
+// HasTag reports whether the context actor has the given tag.
+// If not, it returns false and a nil error.
+func (u *users) HasTag(ctx context.Context, userID int32, tag string) (bool, error) {
+	if Mocks.Users.HasTag != nil {
+		return Mocks.Users.HasTag(ctx, userID, tag)
+	}
+
+	var tags []string
+	err := dbconn.Global.QueryRowContext(ctx, "SELECT tags FROM users WHERE id = $1", userID).Scan(pq.Array(&tags))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, userNotFoundErr{[]interface{}{userID}}
+		}
+
+		return false, err
+	}
+
+	for _, t := range tags {
+		if t == tag {
+			return true, nil
+		}
+	}
+	return false, nil
 }

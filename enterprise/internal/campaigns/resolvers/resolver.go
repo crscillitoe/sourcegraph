@@ -3,17 +3,17 @@ package resolvers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
 	"github.com/graph-gophers/graphql-go"
-	"github.com/inconshreveable/log15"
 	"github.com/pkg/errors"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/envvar"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	ee "github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
-	"github.com/sourcegraph/sourcegraph/enterprise/internal/licensing"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns/search"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/campaigns"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
@@ -23,6 +23,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/auth"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
+	"github.com/sourcegraph/sourcegraph/internal/usagestats"
 )
 
 // Resolver is the GraphQL resolver of all things related to Campaigns.
@@ -36,13 +37,16 @@ func NewResolver(db *sql.DB) graphqlbackend.CampaignsResolver {
 	return &Resolver{store: ee.NewStore(db)}
 }
 
-func campaignsEnabled() error {
+func campaignsEnabled(ctx context.Context) error {
 	// On Sourcegraph.com nobody can read/create campaign entities
 	if envvar.SourcegraphDotComMode() {
 		return ErrCampaignsDotCom{}
 	}
 
 	if enabled := conf.CampaignsEnabled(); enabled {
+		if conf.Get().CampaignsRestrictToAdmins && backend.CheckCurrentUserIsSiteAdmin(ctx) != nil {
+			return ErrCampaignsDisabledForUser{}
+		}
 		return nil
 	}
 
@@ -64,26 +68,8 @@ func campaignsCreateAccess(ctx context.Context) error {
 	return nil
 }
 
-// checkLicense returns a user-facing error if the campaigns feature is not purchased
-// with the current license or any error occurred while validating the license.
-func checkLicense() error {
-	if !licensing.EnforceTiers {
-		return nil
-	}
-
-	err := licensing.Check(licensing.FeatureCampaigns)
-	if err != nil {
-		if licensing.IsFeatureNotActivated(err) {
-			return err
-		}
-		log15.Error("campaigns.Resolver.checkLicense", "err", err)
-		return errors.New("Unable to check license feature, please refer to logs for actual error message.")
-	}
-	return nil
-}
-
 func (r *Resolver) ChangesetByID(ctx context.Context, id graphql.ID) (graphqlbackend.ChangesetResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -115,7 +101,7 @@ func (r *Resolver) ChangesetByID(ctx context.Context, id graphql.ID) (graphqlbac
 }
 
 func (r *Resolver) CampaignByID(ctx context.Context, id graphql.ID) (graphqlbackend.CampaignResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -140,7 +126,7 @@ func (r *Resolver) CampaignByID(ctx context.Context, id graphql.ID) (graphqlback
 }
 
 func (r *Resolver) Campaign(ctx context.Context, args *graphqlbackend.CampaignArgs) (graphqlbackend.CampaignResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -163,7 +149,7 @@ func (r *Resolver) Campaign(ctx context.Context, args *graphqlbackend.CampaignAr
 }
 
 func (r *Resolver) CampaignSpecByID(ctx context.Context, id graphql.ID) (graphqlbackend.CampaignSpecResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -189,7 +175,7 @@ func (r *Resolver) CampaignSpecByID(ctx context.Context, id graphql.ID) (graphql
 }
 
 func (r *Resolver) ChangesetSpecByID(ctx context.Context, id graphql.ID) (graphqlbackend.ChangesetSpecResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -211,22 +197,21 @@ func (r *Resolver) ChangesetSpecByID(ctx context.Context, id graphql.ID) (graphq
 		return nil, err
 	}
 
-	return &changesetSpecResolver{
-		store:         r.store,
-		httpFactory:   r.httpFactory,
-		changesetSpec: changesetSpec,
-		repoCtx:       ctx,
-	}, nil
+	return NewChangesetSpecResolver(ctx, r.store, r.httpFactory, changesetSpec)
 }
 
 func (r *Resolver) CampaignsCredentialByID(ctx context.Context, id graphql.ID) (graphqlbackend.CampaignsCredentialResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
 	dbID, err := unmarshalCampaignsCredentialID(id)
 	if err != nil {
 		return nil, err
+	}
+
+	if dbID == 0 {
+		return nil, nil
 	}
 
 	cred, err := db.UserCredentials.GetByID(ctx, dbID)
@@ -252,12 +237,7 @@ func (r *Resolver) CreateCampaign(ctx context.Context, args *graphqlbackend.Crea
 		tr.Finish()
 	}()
 
-	// Validate that the instance's licensing tier supports campaigns.
-	if err := checkLicense(); err != nil {
-		return nil, err
-	}
-
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -299,12 +279,7 @@ func (r *Resolver) ApplyCampaign(ctx context.Context, args *graphqlbackend.Apply
 		tr.Finish()
 	}()
 
-	// Validate that the instance's licensing tier supports campaigns.
-	if err := checkLicense(); err != nil {
-		return nil, err
-	}
-
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -352,7 +327,7 @@ func (r *Resolver) CreateCampaignSpec(ctx context.Context, args *graphqlbackend.
 		tr.Finish()
 	}()
 
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -381,6 +356,10 @@ func (r *Resolver) CreateCampaignSpec(ctx context.Context, args *graphqlbackend.
 		return nil, err
 	}
 
+	if err := logCampaignSpecCreated(ctx, &opts); err != nil {
+		return nil, err
+	}
+
 	specResolver := &campaignSpecResolver{
 		store:        r.store,
 		httpFactory:  r.httpFactory,
@@ -388,6 +367,24 @@ func (r *Resolver) CreateCampaignSpec(ctx context.Context, args *graphqlbackend.
 	}
 
 	return specResolver, nil
+}
+
+func logCampaignSpecCreated(ctx context.Context, opts *ee.CreateCampaignSpecOpts) error {
+	// Log an analytics event when a CampaignSpec has been created.
+	// See internal/usagestats/campaigns.go.
+	actor := actor.FromContext(ctx)
+
+	type eventArg struct {
+		ChangesetSpecsCount int `json:"changeset_specs_count"`
+	}
+	arg := eventArg{ChangesetSpecsCount: len(opts.ChangesetSpecRandIDs)}
+
+	jsonArg, err := json.Marshal(arg)
+	if err != nil {
+		return err
+	}
+
+	return usagestats.LogBackendEvent(actor.UID, "CampaignSpecCreated", json.RawMessage(jsonArg))
 }
 
 func (r *Resolver) CreateChangesetSpec(ctx context.Context, args *graphqlbackend.CreateChangesetSpecArgs) (graphqlbackend.ChangesetSpecResolver, error) {
@@ -398,7 +395,7 @@ func (r *Resolver) CreateChangesetSpec(ctx context.Context, args *graphqlbackend
 		tr.Finish()
 	}()
 
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -417,13 +414,7 @@ func (r *Resolver) CreateChangesetSpec(ctx context.Context, args *graphqlbackend
 		return nil, err
 	}
 
-	resolver := &changesetSpecResolver{
-		store:         r.store,
-		httpFactory:   r.httpFactory,
-		changesetSpec: spec,
-		repoCtx:       ctx,
-	}
-	return resolver, nil
+	return NewChangesetSpecResolver(ctx, r.store, r.httpFactory, spec)
 }
 
 func (r *Resolver) MoveCampaign(ctx context.Context, args *graphqlbackend.MoveCampaignArgs) (graphqlbackend.CampaignResolver, error) {
@@ -434,7 +425,7 @@ func (r *Resolver) MoveCampaign(ctx context.Context, args *graphqlbackend.MoveCa
 		tr.Finish()
 	}()
 
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -476,7 +467,7 @@ func (r *Resolver) DeleteCampaign(ctx context.Context, args *graphqlbackend.Dele
 		tr.SetError(err)
 		tr.Finish()
 	}()
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -496,7 +487,7 @@ func (r *Resolver) DeleteCampaign(ctx context.Context, args *graphqlbackend.Dele
 }
 
 func (r *Resolver) Campaigns(ctx context.Context, args *graphqlbackend.ListCampaignsArgs) (graphqlbackend.CampaignsConnectionResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -546,7 +537,7 @@ func (r *Resolver) Campaigns(ctx context.Context, args *graphqlbackend.ListCampa
 }
 
 func (r *Resolver) CampaignsCodeHosts(ctx context.Context, args *graphqlbackend.ListCampaignsCodeHostsArgs) (graphqlbackend.CampaignsCodeHostConnectionResolver, error) {
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -651,6 +642,17 @@ func listChangesetOptsFromArgs(args *graphqlbackend.ListChangesetsArgs, campaign
 		opts.OwnedByCampaignID = campaignID
 		opts.PublicationState = &published
 	}
+	if args.Search != nil {
+		ts, err := search.ParseChangesetSearch(*args.Search)
+		if err != nil {
+			return opts, false, errors.Wrap(err, "parsing search")
+		}
+		opts.TextSearch = ts.TextSearch
+		// Since we search for the repository name in text searches, the
+		// presence or absence of results may leak information about hidden
+		// repositories.
+		safe = false
+	}
 
 	return opts, safe, nil
 }
@@ -662,7 +664,7 @@ func (r *Resolver) CloseCampaign(ctx context.Context, args *graphqlbackend.Close
 		tr.Finish()
 	}()
 
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -691,7 +693,7 @@ func (r *Resolver) SyncChangeset(ctx context.Context, args *graphqlbackend.SyncC
 		tr.SetError(err)
 		tr.Finish()
 	}()
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
@@ -719,14 +721,22 @@ func (r *Resolver) CreateCampaignsCredential(ctx context.Context, args *graphqlb
 		tr.SetError(err)
 		tr.Finish()
 	}()
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 
-	// Check user is authenticated.
-	user := actor.FromContext(ctx)
-	if !user.IsAuthenticated() {
-		return nil, backend.ErrNotAuthenticated
+	userID, err := graphqlbackend.UnmarshalUserID(args.User)
+	if err != nil {
+		return nil, err
+	}
+
+	if userID == 0 {
+		return nil, ErrIDIsZero{}
+	}
+
+	// 🚨 SECURITY: Check that the requesting user can create the credential.
+	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+		return nil, err
 	}
 
 	// Need to validate externalServiceKind, otherwise this'll panic.
@@ -745,7 +755,7 @@ func (r *Resolver) CreateCampaignsCredential(ctx context.Context, args *graphqlb
 		Domain:              db.UserCredentialDomainCampaigns,
 		ExternalServiceID:   args.ExternalServiceURL,
 		ExternalServiceType: extsvc.KindToType(kind),
-		UserID:              user.UID,
+		UserID:              userID,
 	}
 
 	// Throw error documented in schema.graphql.
@@ -783,7 +793,7 @@ func (r *Resolver) DeleteCampaignsCredential(ctx context.Context, args *graphqlb
 		tr.SetError(err)
 		tr.Finish()
 	}()
-	if err := campaignsEnabled(); err != nil {
+	if err := campaignsEnabled(ctx); err != nil {
 		return nil, err
 	}
 

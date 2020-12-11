@@ -134,7 +134,7 @@ func (c *V3Client) requestGet(ctx context.Context, requestURI string, result int
 
 	err = c.rateLimit.Wait(ctx)
 	if err != nil {
-		return errors.Wrap(err, "rate limit")
+		return errInternalRateLimitExceeded
 	}
 
 	return doRequest(ctx, c.apiURL, c.auth, c.rateLimitMonitor, c.httpClient, req, result)
@@ -171,6 +171,10 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("request to %s returned status %d: %s", e.URL, e.Code, e.Message)
+}
+
+func (e *APIError) Unauthorized() bool {
+	return e.Code == http.StatusUnauthorized
 }
 
 // HTTPErrorCode returns err's HTTP status code, if it is an HTTP error from

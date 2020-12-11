@@ -6,12 +6,20 @@ import (
 	"time"
 
 	"github.com/keegancsmith/sqlf"
-	"github.com/sourcegraph/sourcegraph/cmd/repo-updater/repos"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/campaigns"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/workerutil"
 	"github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker"
 	dbworkerstore "github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker/store"
 )
+
+// reconcilerMaxNumRetries is the maximum number of attempts the reconciler
+// makes to process a changeset when it fails.
+const reconcilerMaxNumRetries = 60
+
+// reconcilerMaxNumResets is the maximum number of attempts the reconciler
+// makes to process a changeset when it stalls (process crashes, etc.).
+const reconcilerMaxNumResets = 60
 
 // newWorker creates a dbworker.newWorker that fetches enqueued changesets
 // from the database and passes them to the changeset reconciler for
@@ -61,7 +69,7 @@ func scanFirstChangesetRecord(rows *sql.Rows, err error) (workerutil.Record, boo
 }
 
 func createDBWorkerStore(s *campaigns.Store) dbworkerstore.Store {
-	return dbworkerstore.NewStore(s.Handle(), dbworkerstore.StoreOptions{
+	return dbworkerstore.New(s.Handle(), dbworkerstore.Options{
 		TableName:            "changesets",
 		AlternateColumnNames: map[string]string{"state": "reconciler_state"},
 		ColumnExpressions:    campaigns.ChangesetColumns,
@@ -73,9 +81,9 @@ func createDBWorkerStore(s *campaigns.Store) dbworkerstore.Store {
 		OrderByExpression: sqlf.Sprintf("reconciler_state = 'errored', changesets.updated_at DESC"),
 
 		StalledMaxAge: 60 * time.Second,
-		MaxNumResets:  campaigns.ReconcilerMaxNumResets,
+		MaxNumResets:  reconcilerMaxNumResets,
 
 		RetryAfter:    5 * time.Second,
-		MaxNumRetries: campaigns.ReconcilerMaxNumRetries,
+		MaxNumRetries: reconcilerMaxNumRetries,
 	})
 }
