@@ -1,3 +1,9 @@
+/*
+    As per the apache version 2.0 license, this is a notice
+    to let you, the reader, know that I have modified this file
+    from its' original state.
+*/
+
 import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
 import React, { Suspense, useCallback } from 'react'
 import { Redirect, Route, RouteComponentProps, Switch, matchPath } from 'react-router'
@@ -209,7 +215,9 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
             {!isSiteInit && !isSignInOrUp && (
                 <GlobalNavbar
                     {...props}
-                    authRequired={!!authRequired}
+                    // If we pass authRequired === `false` in to the GlobalNavbar, our
+                    // search bar/logo will properly appear again in guest view
+                    authRequired={false}
                     isSearchRelatedPage={isSearchRelatedPage}
                     variant={
                         hideGlobalSearchInput
